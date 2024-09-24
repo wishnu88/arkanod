@@ -1,0 +1,7 @@
+- db_instance: ptzbox
+  db_driver: mariadb
+  db_host: 172.18.81.14
+  # db_port: 
+  db_username: arkanodtest
+  db_password: "210924"
+  db_name: decorus

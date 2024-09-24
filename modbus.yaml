@@ -1,0 +1,460 @@
+- type: rtuovertcp
+  host: 114.141.55.52
+  port: 23026
+  name: mb_kat_hci
+  timeout_seconds: 5
+  wait_milliseconds: 50
+  current_log:
+    scan_interval_ms: 30000
+    # debug: true
+    group_ids:
+    - 1
+  hourly_log:
+    group_ids:
+    - 2
+  daily_log:
+    group_ids:
+    - 3
+  monthly_log:
+    group_ids:
+    - 4
+  register_group:
+  - group_id: 1
+    slave: 1
+    address: 1
+    count: 30
+    type: holding
+  - group_id: 2
+    slave: 1
+    address: 201
+    count: 48
+    type: holding
+  - group_id: 3
+    slave: 1
+    address: 401
+    count: 48
+    type: holding
+  - group_id: 4
+    slave: 1
+    address: 601
+    count: 48
+    type: holding
+  register_conversion:
+  - name: dtu
+    group_id: 1
+    registers: [1, 2]
+    data_type: uint32
+    swap: word_byte
+  - name: Vb
+    group_id: 1
+    registers: [4, 5]
+    data_type: uint32
+    swap: word_byte
+  - name: Vm
+    group_id: 1
+    registers: [6, 7]
+    data_type: uint32
+    swap: word_byte
+  - name: p1
+    group_id: 1
+    registers: [8, 9]
+    data_type: float32
+    swap: word_byte
+    precision: 3
+  - name: t
+    group_id: 1
+    registers: [10, 11]
+    data_type: float32
+    swap: word_byte
+    precision: 3
+  - name: Qm
+    group_id: 1
+    registers: [12, 13]
+    data_type: float32
+    swap: word_byte
+    precision: 3
+  - name: Qb
+    group_id: 1
+    registers: [14, 15]
+    data_type: float32
+    swap: word_byte
+    precision: 3
+  - name: EPwrSActive
+    group_id: 1
+    registers: [25, 25]
+    data_type: uint16
+    swap: word_byte
+  - name: EPwrSCheck
+    group_id: 1
+    registers: [26, 26]
+    data_type: uint16
+    swap: word_byte
+  - name: ETL
+    group_id: 1
+    registers: [27, 28]
+    data_type: float32
+    swap: word_byte
+    precision: 3
+  - name: BattLvl
+    group_id: 1
+    registers: [29, 30]
+    data_type: float32
+    swap: word_byte
+    precision: 3
+  - name: h_Vb
+    group_id: 2
+    registers: [201, 204]
+    data_type: float64
+    swap: word_byte
+  - name: h_Vm
+    group_id: 2
+    registers: [205, 208]
+    data_type: float64
+    precision: none
+    swap: word_byte
+  - name: h_FlowTm
+    group_id: 2
+    registers: [209, 210]
+    data_type: uint32
+    precision: none
+    swap: word_byte
+  - name: h_p1Avg
+    group_id: 2
+    registers: [211, 212]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_p1Min
+    group_id: 2
+    registers: [213, 214]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_p1Max
+    group_id: 2
+    registers: [215, 216]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_tAvg
+    group_id: 2
+    registers: [217, 218]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_tMin
+    group_id: 2
+    registers: [219, 220]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_tMax
+    group_id: 2
+    registers: [221, 222]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_QmAvg
+    group_id: 2
+    registers: [223, 224]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_QmMin
+    group_id: 2
+    registers: [225, 226]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_QmMax
+    group_id: 2
+    registers: [227, 228]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_QbAvg
+    group_id: 2
+    registers: [229, 230]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_QbMin
+    group_id: 2
+    registers: [231, 232]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_QbMax
+    group_id: 2
+    registers: [233, 234]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_tambAvg
+    group_id: 2
+    registers: [235, 236]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_dVbSum
+    group_id: 2
+    registers: [237, 240]
+    data_type: float64
+    precision: none
+    swap: word_byte
+  - name: h_dVmSum
+    group_id: 2
+    registers: [241, 244]
+    data_type: float64
+    precision: none
+    swap: word_byte
+  - name: h_BattLvl
+    group_id: 2
+    registers: [245, 246]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: h_DTStamp
+    group_id: 2
+    registers: [247, 248]
+    data_type: uint32
+    precision: none
+    swap: word_byte
+  - name: d_Vb
+    group_id: 3
+    registers: [401, 404]
+    data_type: float64
+    swap: word_byte
+  - name: d_Vm
+    group_id: 3
+    registers: [405, 408]
+    data_type: float64
+    precision: none
+    swap: word_byte
+  - name: d_FlowTm
+    group_id: 3
+    registers: [409, 410]
+    data_type: uint32
+    precision: none
+    swap: word_byte
+  - name: d_p1Avg
+    group_id: 3
+    registers: [411, 412]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_p1Min
+    group_id: 3
+    registers: [413, 414]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_p1Max
+    group_id: 3
+    registers: [415, 416]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_tAvg
+    group_id: 3
+    registers: [417, 418]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_tMin
+    group_id: 3
+    registers: [419, 420]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_tMax
+    group_id: 3
+    registers: [421, 422]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_QmAvg
+    group_id: 3
+    registers: [423, 424]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_QmMin
+    group_id: 3
+    registers: [425, 426]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_QmMax
+    group_id: 3
+    registers: [427, 428]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_QbAvg
+    group_id: 3
+    registers: [429, 430]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_QbMin
+    group_id: 3
+    registers: [431, 432]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_QbMax
+    group_id: 3
+    registers: [433, 434]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_tambAvg
+    group_id: 3
+    registers: [435, 436]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_dVbSum
+    group_id: 3
+    registers: [437, 440]
+    data_type: float64
+    precision: none
+    swap: word_byte
+  - name: d_dVmSum
+    group_id: 3
+    registers: [441, 444]
+    data_type: float64
+    precision: none
+    swap: word_byte
+  - name: d_BattLvl
+    group_id: 3
+    registers: [445, 446]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: d_DTStamp
+    group_id: 3
+    registers: [447, 448]
+    data_type: uint32
+    precision: none
+    swap: word_byte
+  - name: m_Vb
+    group_id: 4
+    registers: [601, 604]
+    data_type: float64
+    swap: word_byte
+  - name: m_Vm
+    group_id: 4
+    registers: [605, 608]
+    data_type: float64
+    precision: none
+    swap: word_byte
+  - name: m_FlowTm
+    group_id: 4
+    registers: [609, 610]
+    data_type: uint32
+    precision: none
+    swap: word_byte
+  - name: m_p1Avg
+    group_id: 4
+    registers: [611, 612]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_p1Min
+    group_id: 4
+    registers: [613, 614]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_p1Max
+    group_id: 4
+    registers: [615, 616]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_tAvg
+    group_id: 4
+    registers: [617, 618]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_tMin
+    group_id: 4
+    registers: [619, 620]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_tMax
+    group_id: 4
+    registers: [621, 622]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_QmAvg
+    group_id: 4
+    registers: [623, 624]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_QmMin
+    group_id: 4
+    registers: [625, 626]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_QmMax
+    group_id: 4
+    registers: [627, 628]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_QbAvg
+    group_id: 4
+    registers: [629, 630]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_QbMin
+    group_id: 4
+    registers: [631, 632]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_QbMax
+    group_id: 4
+    registers: [633, 634]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_tambAvg
+    group_id: 4
+    registers: [635, 636]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_dVbSum
+    group_id: 4
+    registers: [637, 640]
+    data_type: float64
+    precision: none
+    swap: word_byte
+  - name: m_dVmSum
+    group_id: 4
+    registers: [641, 644]
+    data_type: float64
+    precision: none
+    swap: word_byte
+  - name: m_BattLvl
+    group_id: 4
+    registers: [645, 646]
+    data_type: float32
+    precision: none
+    swap: word_byte
+  - name: m_DTStamp
+    group_id: 4
+    registers: [647, 648]
+    data_type: uint32
+    precision: none
+    swap: word_byte
