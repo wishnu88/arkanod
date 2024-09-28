@@ -139,24 +139,29 @@ def get_evc_log(register_groups) -> dict:
     global client
     
     register_group_address = {}
+    register_items = {}
     for register_group in register_groups:
-        """Define Data Type as uint16 if not specified in config."""
-        if 'type' not in register_group:
-            register_group['type'] = 'uint16'
+        # """Define Data Type as uint16 if not specified in config."""
+        # if 'type' not in register_group:
+        #     register_group['type'] = 'uint16'
+
+        register_gap = 0 if 'gap' not in register_group else register_group['gap']
 
         if register_group['type'] not in register_type_list:
             raise Exception('Invalid Modbus register type option for register group %s. Supported options are: %s' % (register_group['group_id'], register_type_list))
         
         current_slave_id = int(register_group['slave'])
+        """ Modbus read delay """
+        sleep((mb_config_item['wait_milliseconds'] / 1000))
         if register_group['type'] == "input":
             try:
-                result = client.read_input_registers(int(register_group['address']), register_group['count'], slave=current_slave_id)
+                result = client.read_input_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
             except:
                 print('Unable to establish connection to %s port %s. Retrying...' % (mb_config_item['host'], mb_config_item['port']))
                 continue
         elif register_group['type'] == "holding":
             try:
-                result = client.read_holding_registers(int(register_group['address']), register_group['count'], slave=current_slave_id)
+                result = client.read_holding_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
             except:
                 print('Unable to establish connection to %s port %s. Retrying...' % (mb_config_item['host'], mb_config_item['port']))
                 continue
@@ -168,75 +173,86 @@ def get_evc_log(register_groups) -> dict:
             break
         
         if len(result.registers) == register_group['count']:
-            register_addr_map = register_group['address']
+            register_addr_map = register_group['address'] + register_gap
             register_group_values = {}
             for result_map in result.registers:
                 register_group_values[register_addr_map] = result_map
                 register_addr_map = register_addr_map + 1
         else:
             continue
-        
-        register_group_address[register_group['group_id']] = register_group_values
-        sleep((mb_config_item['wait_milliseconds'] / 1000))
-    
-    register_items = {}        
-    for register_conversion in mb_config_item['register_conversion']:
-        if register_conversion['swap'] not in swap_type_list:
-            raise Exception('Invalid byte swap option for. Supported options are: %s' % swap_type_list)
-    
-        current_registers = []
-        register_value_precision = 0 if 'precision' not in register_conversion else register_conversion['precision']
 
-        for register_i in range(int(register_conversion['registers'][0]), int(register_conversion['registers'][1]) + 1):
-            try:
-                current_registers.append(register_group_address[register_conversion['group_id']][register_i])
-            except:
+        register_group_address[register_group['group_id']] = register_group_values    
+            
+        for register_conversion in mb_config_item['register_conversion']:
+            if register_conversion['group_id'] != register_group['group_id']:
                 continue
+
+            if register_conversion['swap'] not in swap_type_list:
+                raise Exception('Invalid byte swap option for. Supported options are: %s' % swap_type_list)
         
-        if len(current_registers) > 0:
-            register_value = decode_results(convert_registers(current_registers, register_conversion['swap']), register_conversion['data_type'])
-            register_items[register_conversion['name']] = round(register_value, register_value_precision) if register_value_precision != "none" else register_value
+            current_registers = []
+            register_value_precision = 0 if 'precision' not in register_conversion else register_conversion['precision']
+
+            for register_i in range(int(register_conversion['registers'][0]) + register_gap, int(register_conversion['registers'][1]) + register_gap + 1):
+                try:
+                    current_registers.append(register_group_address[register_conversion['group_id']][register_i])
+                except:
+                    continue
+            
+            if len(current_registers) > 0:
+                register_value = decode_results(convert_registers(current_registers, register_conversion['swap']), register_conversion['data_type'])
+                register_items[register_conversion['name']] = round(register_value, register_value_precision) if register_value_precision != "none" else register_value
     
     return {'items': register_items, 'slaveID': current_slave_id}
 
-def send_archive_log(deviceID: int, group_ids, kind: str):
+def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0):
     if kind in archive_log_list:
         archive_log_group_ids = get_log_group_ids(group_ids)
-        archive_log_items = get_evc_log(archive_log_group_ids)['items']
+        
+        all_archive_log_items = []
+        for n_iter in range(0, retention + 1):
+            if retention > 0:
+                for group_id_index in range(0, len(archive_log_group_ids)):
+                    archive_log_group_ids[group_id_index]['gap'] = n_iter * archive_log_group_ids[group_id_index]['count']
 
-        archive_tbl = "ptzbox5_hourly_log" if kind == "hourly" else "ptzbox5_daily_log" if kind == "daily" else "ptzbox5_monthly_log"
-        archive_prefix = "h_" if kind == "hourly" else "d_" if kind == "daily" else "m_"
+            archive_log_items = get_evc_log(archive_log_group_ids)['items']
 
-        try:
-            q_insert_archive = "INSERT IGNORE INTO " + archive_tbl + " (deviceID, Vb, Vm, FlowTm, p1Avg, p1Min, p1Max, tAvg, tMin, tMax, QmAvg, QmMin, QmMax, QbAvg, QbMin, QbMax, tambAvg, dVbSum, dVmSum, BattLvl, DTStamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-            items = (
-                deviceID,
-                archive_log_items[archive_prefix + 'Vb'],
-                archive_log_items[archive_prefix + 'Vm'],
-                archive_log_items[archive_prefix + 'FlowTm'],
-                archive_log_items[archive_prefix + 'p1Avg'],
-                archive_log_items[archive_prefix + 'p1Min'],
-                archive_log_items[archive_prefix + 'p1Max'],
-                archive_log_items[archive_prefix + 'tAvg'],
-                archive_log_items[archive_prefix + 'tMin'],
-                archive_log_items[archive_prefix + 'tMax'],
-                archive_log_items[archive_prefix + 'QmAvg'],
-                archive_log_items[archive_prefix + 'QmMin'],
-                archive_log_items[archive_prefix + 'QmMax'],
-                archive_log_items[archive_prefix + 'QbAvg'],
-                archive_log_items[archive_prefix + 'QbMin'],
-                archive_log_items[archive_prefix + 'QbMax'],
-                archive_log_items[archive_prefix + 'tambAvg'],
-                archive_log_items[archive_prefix + 'dVbSum'],
-                archive_log_items[archive_prefix + 'dVmSum'],
-                archive_log_items[archive_prefix + 'BattLvl'],
-                dt_utc_to_current(archive_log_items[archive_prefix + 'DTStamp']),
-                )
+            archive_tbl = "ptzbox5_hourly_log" if kind == "hourly" else "ptzbox5_daily_log" if kind == "daily" else "ptzbox5_monthly_log"
+            archive_prefix = "h_" if kind == "hourly" else "d_" if kind == "daily" else "m_"
 
-            db_cur.execute(q_insert_archive, items)
-        except Exception as e:
-            print(archive_log_items)
-        return archive_log_items
+            try:
+                q_insert_archive = "INSERT IGNORE INTO " + archive_tbl + " (deviceID, Vb, Vm, FlowTm, p1Avg, p1Min, p1Max, tAvg, tMin, tMax, QmAvg, QmMin, QmMax, QbAvg, QbMin, QbMax, tambAvg, dVbSum, dVmSum, BattLvl, DTStamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                items = (
+                    deviceID,
+                    archive_log_items[archive_prefix + 'Vb'],
+                    archive_log_items[archive_prefix + 'Vm'],
+                    archive_log_items[archive_prefix + 'FlowTm'],
+                    archive_log_items[archive_prefix + 'p1Avg'],
+                    archive_log_items[archive_prefix + 'p1Min'],
+                    archive_log_items[archive_prefix + 'p1Max'],
+                    archive_log_items[archive_prefix + 'tAvg'],
+                    archive_log_items[archive_prefix + 'tMin'],
+                    archive_log_items[archive_prefix + 'tMax'],
+                    archive_log_items[archive_prefix + 'QmAvg'],
+                    archive_log_items[archive_prefix + 'QmMin'],
+                    archive_log_items[archive_prefix + 'QmMax'],
+                    archive_log_items[archive_prefix + 'QbAvg'],
+                    archive_log_items[archive_prefix + 'QbMin'],
+                    archive_log_items[archive_prefix + 'QbMax'],
+                    archive_log_items[archive_prefix + 'tambAvg'],
+                    archive_log_items[archive_prefix + 'dVbSum'],
+                    archive_log_items[archive_prefix + 'dVmSum'],
+                    archive_log_items[archive_prefix + 'BattLvl'],
+                    dt_utc_to_current(archive_log_items[archive_prefix + 'DTStamp']),
+                    )
+                
+                db_cur.execute(q_insert_archive, items)
+                if db_cur.rowcount > 0:
+                    all_archive_log_items.append(archive_log_items)
+            except Exception as e:
+                print(archive_log_items)
+        
+        return all_archive_log_items
 
 def send_current_log(deviceID: int, items: tuple = None, insert_log = False) -> bool:
     if insert_log == True:
@@ -356,6 +372,20 @@ while True:
                     if last_dtu_str.month != current_dtu_str.month:
                         send_archive_log(current_device_id, mb_config_item['monthly_log']['group_ids'], 'monthly')
 
+                    """ Check Request Log """
+                    q_check_request_log = 'SELECT id, archiveLog, logRetention FROM ptzbox5_request_log WHERE deviceID = ? AND requestStatus = 0'
+                    db_cur.execute(q_check_request_log, (current_device_id,))
+
+                    if db_cur.rowcount > 0:
+                        rows_request_log = db_cur.fetchall()
+                        for row_request_log in rows_request_log:
+                            if row_request_log[2] <= mb_config_item['monthly_log']['max_retention']:
+                                if len(send_archive_log(current_device_id, mb_config_item[archive_log_list[row_request_log[1]] + '_log']['group_ids'], archive_log_list[row_request_log[1]], row_request_log[2])) > 0:
+                                    q_update_request_log = 'UPDATE ptzbox5_request_log SET requestStatus = 1 WHERE id = ?'
+                            else:
+                                q_update_request_log = 'UPDATE ptzbox5_request_log SET requestStatus = 2 WHERE id = ?'
+
+                            db_cur.execute(q_update_request_log, (row_request_log[0],))
                     last_dtu = register_items['dtu']
     try:
         sleep(0.1)

@@ -1,7 +1,7 @@
 - type: rtuovertcp
-  host: 114.141.55.52
-  port: 23026
-  name: mb_kat_hci
+  host: <Modbus Master Host/IP>
+  port: <Modbus Master TCP Port>
+  name: <Modbus Master Identifier>
   timeout_seconds: 5
   wait_milliseconds: 50
   current_log:
@@ -10,12 +10,15 @@
     group_ids:
     - 1
   hourly_log:
+    max_retention: 72
     group_ids:
     - 2
   daily_log:
+    max_retention: 30
     group_ids:
     - 3
   monthly_log:
+    max_retention: 12
     group_ids:
     - 4
   register_group:
@@ -26,17 +29,17 @@
     type: holding
   - group_id: 2
     slave: 1
-    address: 201
+    address: 1001
     count: 48
     type: holding
   - group_id: 3
     slave: 1
-    address: 401
+    address: 5001
     count: 48
     type: holding
   - group_id: 4
     slave: 1
-    address: 601
+    address: 7001
     count: 48
     type: holding
   register_conversion:
@@ -103,358 +106,358 @@
     precision: 3
   - name: h_Vb
     group_id: 2
-    registers: [201, 204]
+    registers: [1001, 1004]
     data_type: float64
     swap: word_byte
   - name: h_Vm
     group_id: 2
-    registers: [205, 208]
+    registers: [1005, 1008]
     data_type: float64
     precision: none
     swap: word_byte
   - name: h_FlowTm
     group_id: 2
-    registers: [209, 210]
+    registers: [1009, 1010]
     data_type: uint32
     precision: none
     swap: word_byte
   - name: h_p1Avg
     group_id: 2
-    registers: [211, 212]
+    registers: [1011, 1012]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_p1Min
     group_id: 2
-    registers: [213, 214]
+    registers: [1013, 1014]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_p1Max
     group_id: 2
-    registers: [215, 216]
+    registers: [1015, 1016]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_tAvg
     group_id: 2
-    registers: [217, 218]
+    registers: [1017, 1018]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_tMin
     group_id: 2
-    registers: [219, 220]
+    registers: [1019, 1020]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_tMax
     group_id: 2
-    registers: [221, 222]
+    registers: [1021, 1022]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_QmAvg
     group_id: 2
-    registers: [223, 224]
+    registers: [1023, 1024]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_QmMin
     group_id: 2
-    registers: [225, 226]
+    registers: [1025, 1026]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_QmMax
     group_id: 2
-    registers: [227, 228]
+    registers: [1027, 1028]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_QbAvg
     group_id: 2
-    registers: [229, 230]
+    registers: [1029, 1030]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_QbMin
     group_id: 2
-    registers: [231, 232]
+    registers: [1031, 1032]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_QbMax
     group_id: 2
-    registers: [233, 234]
+    registers: [1033, 1034]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_tambAvg
     group_id: 2
-    registers: [235, 236]
+    registers: [1035, 1036]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_dVbSum
     group_id: 2
-    registers: [237, 240]
+    registers: [1037, 1040]
     data_type: float64
     precision: none
     swap: word_byte
   - name: h_dVmSum
     group_id: 2
-    registers: [241, 244]
+    registers: [1041, 1044]
     data_type: float64
     precision: none
     swap: word_byte
   - name: h_BattLvl
     group_id: 2
-    registers: [245, 246]
+    registers: [1045, 1046]
     data_type: float32
     precision: none
     swap: word_byte
   - name: h_DTStamp
     group_id: 2
-    registers: [247, 248]
+    registers: [1047, 1048]
     data_type: uint32
     precision: none
     swap: word_byte
   - name: d_Vb
     group_id: 3
-    registers: [401, 404]
+    registers: [5001, 5004]
     data_type: float64
     swap: word_byte
   - name: d_Vm
     group_id: 3
-    registers: [405, 408]
+    registers: [5005, 5008]
     data_type: float64
     precision: none
     swap: word_byte
   - name: d_FlowTm
     group_id: 3
-    registers: [409, 410]
+    registers: [5009, 5010]
     data_type: uint32
     precision: none
     swap: word_byte
   - name: d_p1Avg
     group_id: 3
-    registers: [411, 412]
+    registers: [5011, 5012]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_p1Min
     group_id: 3
-    registers: [413, 414]
+    registers: [5013, 5014]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_p1Max
     group_id: 3
-    registers: [415, 416]
+    registers: [5015, 5016]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_tAvg
     group_id: 3
-    registers: [417, 418]
+    registers: [5017, 5018]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_tMin
     group_id: 3
-    registers: [419, 420]
+    registers: [5019, 5020]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_tMax
     group_id: 3
-    registers: [421, 422]
+    registers: [5021, 5022]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_QmAvg
     group_id: 3
-    registers: [423, 424]
+    registers: [5023, 5024]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_QmMin
     group_id: 3
-    registers: [425, 426]
+    registers: [5025, 5026]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_QmMax
     group_id: 3
-    registers: [427, 428]
+    registers: [5027, 5028]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_QbAvg
     group_id: 3
-    registers: [429, 430]
+    registers: [5029, 5030]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_QbMin
     group_id: 3
-    registers: [431, 432]
+    registers: [5031, 5032]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_QbMax
     group_id: 3
-    registers: [433, 434]
+    registers: [5033, 5034]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_tambAvg
     group_id: 3
-    registers: [435, 436]
+    registers: [5035, 5036]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_dVbSum
     group_id: 3
-    registers: [437, 440]
+    registers: [5037, 5040]
     data_type: float64
     precision: none
     swap: word_byte
   - name: d_dVmSum
     group_id: 3
-    registers: [441, 444]
+    registers: [5041, 5044]
     data_type: float64
     precision: none
     swap: word_byte
   - name: d_BattLvl
     group_id: 3
-    registers: [445, 446]
+    registers: [5045, 5046]
     data_type: float32
     precision: none
     swap: word_byte
   - name: d_DTStamp
     group_id: 3
-    registers: [447, 448]
+    registers: [5047, 5048]
     data_type: uint32
     precision: none
     swap: word_byte
   - name: m_Vb
     group_id: 4
-    registers: [601, 604]
+    registers: [7001, 7004]
     data_type: float64
     swap: word_byte
   - name: m_Vm
     group_id: 4
-    registers: [605, 608]
+    registers: [7005, 7008]
     data_type: float64
     precision: none
     swap: word_byte
   - name: m_FlowTm
     group_id: 4
-    registers: [609, 610]
+    registers: [7009, 7010]
     data_type: uint32
     precision: none
     swap: word_byte
   - name: m_p1Avg
     group_id: 4
-    registers: [611, 612]
+    registers: [7011, 7012]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_p1Min
     group_id: 4
-    registers: [613, 614]
+    registers: [7013, 7014]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_p1Max
     group_id: 4
-    registers: [615, 616]
+    registers: [7015, 7016]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_tAvg
     group_id: 4
-    registers: [617, 618]
+    registers: [7017, 7018]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_tMin
     group_id: 4
-    registers: [619, 620]
+    registers: [7019, 7020]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_tMax
     group_id: 4
-    registers: [621, 622]
+    registers: [7021, 7022]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_QmAvg
     group_id: 4
-    registers: [623, 624]
+    registers: [7023, 7024]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_QmMin
     group_id: 4
-    registers: [625, 626]
+    registers: [7025, 7026]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_QmMax
     group_id: 4
-    registers: [627, 628]
+    registers: [7027, 7028]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_QbAvg
     group_id: 4
-    registers: [629, 630]
+    registers: [7029, 7030]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_QbMin
     group_id: 4
-    registers: [631, 632]
+    registers: [7031, 7032]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_QbMax
     group_id: 4
-    registers: [633, 634]
+    registers: [7033, 7034]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_tambAvg
     group_id: 4
-    registers: [635, 636]
+    registers: [7035, 7036]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_dVbSum
     group_id: 4
-    registers: [637, 640]
+    registers: [7037, 7040]
     data_type: float64
     precision: none
     swap: word_byte
   - name: m_dVmSum
     group_id: 4
-    registers: [641, 644]
+    registers: [7041, 7044]
     data_type: float64
     precision: none
     swap: word_byte
   - name: m_BattLvl
     group_id: 4
-    registers: [645, 646]
+    registers: [7045, 7046]
     data_type: float32
     precision: none
     swap: word_byte
   - name: m_DTStamp
     group_id: 4
-    registers: [647, 648]
+    registers: [7047, 7048]
     data_type: uint32
     precision: none
     swap: word_byte
