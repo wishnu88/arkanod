@@ -210,7 +210,7 @@ def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0):
         archive_log_group_ids = get_log_group_ids(group_ids)
         
         all_archive_log_items = []
-        for n_iter in range(0, retention + 1):
+        for n_iter in range(0 if retention == 0 else 1, retention + 1):
             if retention > 0:
                 for group_id_index in range(0, len(archive_log_group_ids)):
                     archive_log_group_ids[group_id_index]['gap'] = n_iter * archive_log_group_ids[group_id_index]['count']

@@ -14,7 +14,7 @@
     group_ids:
     - 2
   daily_log:
-    max_retention: 30
+    max_retention: 31
     group_ids:
     - 3
   monthly_log:
