@@ -379,7 +379,7 @@ while True:
                     if db_cur.rowcount > 0:
                         rows_request_log = db_cur.fetchall()
                         for row_request_log in rows_request_log:
-                            if row_request_log[2] <= mb_config_item['monthly_log']['max_retention']:
+                            if row_request_log[2] <= mb_config_item[archive_log_list[row_request_log[1]] + '_log']['max_retention']:
                                 if len(send_archive_log(current_device_id, mb_config_item[archive_log_list[row_request_log[1]] + '_log']['group_ids'], archive_log_list[row_request_log[1]], row_request_log[2])) > 0:
                                     q_update_request_log = 'UPDATE ptzbox5_request_log SET requestStatus = 1 WHERE id = ?'
                             else:
