@@ -51,14 +51,33 @@ archive_log_list = [
     'monthly'
 ]
 
+isRunning = True
+
+def printLog(msg: str, level: str = 'info'):
+    if logging.getLogger().hasHandlers():
+        if level == 'info':
+            logging.info(msg)
+        elif level == 'debug':
+            logging.debug
+        elif level == 'error':
+            logging.error
+        elif level == 'critical':
+            logging.critical
+    else:
+        print(msg)
+
 def app_exit(exitVal: int = 0):
-   logging.info("Exiting...") if logging.getLogger().hasHandlers() else print("Exiting...")
+    global client, db_conn, isRunning
 
-   if 'client' in globals() and client.connected:
-      logging.info("Disconnecting from Modbus devices...")
-      client.close()
+    isRunning = False
 
-   sys.exit(exitVal)
+    if 'client' in globals() and client.connected == True:
+        printLog("Disconnecting from Modbus devices...")
+        client.close()
+
+    db_conn.close()
+    printLog('Exiting...')   
+    sys.exit(exitVal)
 
 def convert_registers(registers, swap_type: str = "none"):
     if swap_type == 'word':
@@ -311,7 +330,7 @@ current_log_timers = {}
 for mb_config_item in mb_config_detail:
     current_log_timers[mb_config_item['name']] = 0
 
-while True:
+while isRunning:
     for mb_config_item in mb_config_detail:
         """Sanity check for Modbus Type config."""
         if mb_config_item['type'] not in modbus_type_list:
