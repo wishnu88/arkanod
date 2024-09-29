@@ -60,7 +60,7 @@ def app_exit(exitVal: int = 0):
 
    sys.exit(exitVal)
 
-def convert_registers(registers, swap_type):
+def convert_registers(registers, swap_type: str = "none"):
     if swap_type == 'word':
         byte_order = Endian.BIG
         word_order = Endian.LITTLE
@@ -153,21 +153,22 @@ def get_evc_log(register_groups) -> dict:
         current_slave_id = int(register_group['slave'])
         """ Modbus read delay """
         sleep((mb_config_item['wait_milliseconds'] / 1000))
-        if register_group['type'] == "input":
-            try:
+
+        try:
+            if register_group['type'] == "input":
                 result = client.read_input_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
-            except:
-                print('Unable to establish connection to %s port %s. Retrying...' % (mb_config_item['host'], mb_config_item['port']))
-                continue
-        elif register_group['type'] == "holding":
-            try:
+            elif register_group['type'] == "holding":
                 result = client.read_holding_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
-            except:
-                print('Unable to establish connection to %s port %s. Retrying...' % (mb_config_item['host'], mb_config_item['port']))
-                continue
+        except:
+            print('Unable to poll Modbus device on %s port %s with slave ID %s. Moving on...' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port'], register_group['slave']))
+            sleep(mb_config_item['timeout_seconds'])
+            continue
+
         if hasattr(result, 'registers') == False:
-            print('Unable to poll Modbus device on %s port %s with slave ID %s. Retrying...' % (mb_config_item['host'], mb_config_item['port'], register_group['slave']))
+            print('Unexpected response from Modbus device on %s port %s with slave ID %s.' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port'], register_group['slave']))
+            sleep(mb_config_item['timeout_seconds'])
             if client.connected == False:
+                print('Disconnected from %s port %s.' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port']))
                 client = mb_connect(mb_config_item['type'], host=mb_config_item['host'], port=mb_config_item['port'], mb_timeout=mb_config_item['timeout_seconds'])
                 current_log_timers[mb_config_item['name']] = 0
             break
@@ -200,7 +201,7 @@ def get_evc_log(register_groups) -> dict:
                     continue
             
             if len(current_registers) > 0:
-                register_value = decode_results(convert_registers(current_registers, register_conversion['swap']), register_conversion['data_type'])
+                register_value = decode_results(convert_registers(current_registers, register_conversion['swap'] if 'swap' in register_conversion else None), register_conversion['data_type'])
                 register_items[register_conversion['name']] = round(register_value, register_value_precision) if register_value_precision != "none" else register_value
     
     return {'items': register_items, 'slaveID': current_slave_id}
@@ -317,6 +318,8 @@ while True:
             raise Exception('Invalid Modbus type option. Supported options are: %s' % modbus_type_list)
 
         if 'client' not in vars() or ('client' in vars() and hasattr(client, 'connected') and client.connected == False):
+            if 'client' in vars():
+                print('Disconnected from %s port %s.' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port']))
             client = mb_connect(mb_config_item['type'], host=mb_config_item['host'], port=mb_config_item['port'], mb_timeout=mb_config_item['timeout_seconds'])
 
         if round(millis()*1000) - current_log_timers[mb_config_item['name']] >= int(mb_config_item['current_log']['scan_interval_ms']) and client.connected == True:
@@ -372,9 +375,9 @@ while True:
                     if last_dtu_str.month != current_dtu_str.month:
                         send_archive_log(current_device_id, mb_config_item['monthly_log']['group_ids'], 'monthly')
 
-                    """ Check Request Log """
-                    q_check_request_log = 'SELECT id, archiveLog, logRetention FROM ptzbox5_request_log WHERE deviceID = ? AND requestStatus = 0'
-                    db_cur.execute(q_check_request_log, (current_device_id,))
+                    """ Start - Check Request Log """
+                    q_check_request_log = 'SELECT id, archiveLog, logRetention FROM ptzbox5_request_log WHERE deviceID = ? AND requestStatus = 0 AND archiveLog >= 0 AND archiveLog < ?'
+                    db_cur.execute(q_check_request_log, (current_device_id, len(archive_log_list)))
 
                     if db_cur.rowcount > 0:
                         rows_request_log = db_cur.fetchall()
@@ -386,6 +389,8 @@ while True:
                                 q_update_request_log = 'UPDATE ptzbox5_request_log SET requestStatus = 2 WHERE id = ?'
 
                             db_cur.execute(q_update_request_log, (row_request_log[0],))
+                    """ End - Check Request Log """
+
                     last_dtu = register_items['dtu']
     try:
         sleep(0.1)
