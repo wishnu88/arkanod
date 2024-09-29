@@ -75,8 +75,9 @@ def app_exit(exitVal: int = 0):
         printLog("Disconnecting from Modbus devices...")
         client.close()
 
+    printLog("Closing MariaDB database...")
     db_conn.close()
-    printLog('Exiting...')   
+    printLog('Graceful exit done.')   
     sys.exit(exitVal)
 
 def convert_registers(registers, swap_type: str = "none"):
@@ -121,6 +122,9 @@ def decode_results(results, data_type):
     return decoded
 
 def mb_connect(type, port: str, host: str = None, mb_timeout: int = None):
+    if isRunning == False:
+        return
+
     if type in ['rtuovertcp','tcp']:        
         try:
             print("Connecting to %s port %s..." % (host, port))
