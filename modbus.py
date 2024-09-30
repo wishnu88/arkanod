@@ -241,8 +241,8 @@ def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0):
 
             archive_log_items = get_evc_log(archive_log_group_ids)['items']
 
-            archive_tbl = "ptzbox5_hourly_log" if kind == "hourly" else "ptzbox5_daily_log" if kind == "daily" else "ptzbox5_monthly_log"
-            archive_prefix = "h_" if kind == "hourly" else "d_" if kind == "daily" else "m_"
+            archive_tbl = "ptzbox5_hourly_log" if kind == "hourly_log" else "ptzbox5_daily_log" if kind == "daily_log" else "ptzbox5_monthly_log"
+            archive_prefix = "h_" if kind == "hourly_log" else "d_" if kind == "daily_log" else "m_"
 
             try:
                 q_insert_archive = "INSERT IGNORE INTO " + archive_tbl + " (deviceID, Vb, Vm, FlowTm, p1Avg, p1Min, p1Max, tAvg, tMin, tMax, QmAvg, QmMin, QmMax, QbAvg, QbMin, QbMax, tambAvg, dVbSum, dVmSum, BattLvl, DTStamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
