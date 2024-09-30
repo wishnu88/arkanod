@@ -274,7 +274,7 @@ def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0):
                 if db_cur.rowcount > 0:
                     all_archive_log_items.append(archive_log_items)
             except Exception as e:
-                printLog(archive_log_items, 'error')
+                printLog(e, 'error')
         
         return all_archive_log_items
 
@@ -730,18 +730,21 @@ while isRunning:
 
                     """ Get hourly log when EVC hour has changed """
                     if last_dtu_str.hour != current_dtu_str.hour and archive_log_enabled['hourly_log'] == True:
-                        while len(send_archive_log(current_device_id, mb_config_item['hourly_log']['group_ids'], 'hourly_log')) == 0:
-                            None
+                        while 'len_archive_log' not in vars():
+                            len_archive_log = len(send_archive_log(current_device_id, mb_config_item['hourly_log']['group_ids'], 'hourly_log'))
+                        del len_archive_log
 
                     """ Get daily log when EVC day has changed """
                     if last_dtu_str.day != current_dtu_str.day and archive_log_enabled['daily_log'] == True:
-                        while len(send_archive_log(current_device_id, mb_config_item['daily_log']['group_ids'], 'daily_log')) == 0:
-                            None
+                        while 'len_archive_log' not in vars():
+                            len_archive_log = len(send_archive_log(current_device_id, mb_config_item['daily_log']['group_ids'], 'daily_log'))
+                        del len_archive_log
 
                     """ Get monthly log when EVC month has changed """
                     if last_dtu_str.month != current_dtu_str.month and archive_log_enabled['monthly_log'] == True:
-                        while len(send_archive_log(current_device_id, mb_config_item['monthly_log']['group_ids'], 'monthly_log')) == 0:
-                            None
+                        while 'len_archive_log' not in vars():
+                            len_archive_log = len(send_archive_log(current_device_id, mb_config_item['monthly_log']['group_ids'], 'monthly_log'))
+                        del len_archive_log
 
                     """ START - Check Request Log """
                     q_check_request_log = 'SELECT id, archiveLog, logRetention FROM ptzbox5_request_log WHERE deviceID = ? AND requestStatus = 0 AND archiveLog >= 0 AND archiveLog < ?'
