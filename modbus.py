@@ -241,6 +241,10 @@ def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0):
 
             archive_log_items = get_evc_log(archive_log_group_ids)['items']
 
+            if retention > 0:
+                for group_id_index in range(0, len(archive_log_group_ids)):
+                    del archive_log_group_ids[group_id_index]['gap']
+
             archive_tbl = "ptzbox5_hourly_log" if kind == "hourly_log" else "ptzbox5_daily_log" if kind == "daily_log" else "ptzbox5_monthly_log"
             archive_prefix = "h_" if kind == "hourly_log" else "d_" if kind == "daily_log" else "m_"
 
