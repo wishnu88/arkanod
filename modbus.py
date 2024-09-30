@@ -755,11 +755,14 @@ while isRunning:
                         for row_request_log in rows_request_log:
                             if row_request_log[2] <= mb_config_item[archive_log_list[row_request_log[1]]]['max_retention'] and archive_log_enabled[archive_log_list[row_request_log[1]]] == True:
                                 if len(send_archive_log(current_device_id, mb_config_item[archive_log_list[row_request_log[1]]]['group_ids'], archive_log_list[row_request_log[1]], row_request_log[2])) > 0:
-                                    q_update_request_log = 'UPDATE ptzbox5_request_log SET requestStatus = 1 WHERE id = ?'
+                                    q_request_log_status = 1
+                                else:
+                                    q_request_log_status = 2
                             else:
-                                q_update_request_log = 'UPDATE ptzbox5_request_log SET requestStatus = 2 WHERE id = ?'
+                                q_request_log_status = 2
 
-                            db_cur.execute(q_update_request_log, (row_request_log[0],))
+                            q_update_request_log = 'UPDATE ptzbox5_request_log SET requestStatus = ? WHERE id = ?'
+                            db_cur.execute(q_update_request_log, (q_request_log_status, row_request_log[0]))
                     """ END - Check Request Log """
 
                     last_dtu = register_items['dtu']
