@@ -428,7 +428,7 @@ with open('modbus.yaml', 'r') as mb_config:
             if 'name' not in mb_config_check_item:
                 printLog('[Item %s] Modbus device name (name: unique) must be specified.' % item_index, 'error')
                 error_len = error_len + 1
-            elif mb_config_check_item['name'] != "":
+            elif mb_config_check_item['name'] == "":
                 printLog('[Item %s] Modbus device name (name: unique) cannot be blank.' % item_index, 'error')
                 error_len = error_len + 1
 
