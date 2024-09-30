@@ -124,8 +124,6 @@ def decode_results(results, data_type):
         decoded = results.decode_64bit_uint()
     elif data_type == 'dt1':
         decoded = results.decode_32bit_uint()
-    else:
-        raise Exception('Invalid Modbus register data_type option. Supported options are: %s' % data_type_list)
 
     return decoded
 
@@ -216,9 +214,6 @@ def get_evc_log(register_groups) -> dict:
             if register_conversion['group_id'] != register_group['group_id']:
                 continue
 
-            if register_conversion['swap'] not in swap_type_list:
-                raise Exception('Invalid byte swap option for. Supported options are: %s' % swap_type_list)
-        
             current_registers = []
             register_value_precision = 0 if 'precision' not in register_conversion else register_conversion['precision']
 
