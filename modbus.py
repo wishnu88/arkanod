@@ -57,6 +57,12 @@ archive_log_enabled = {
     'monthly_log': True,
 }
 
+archive_log_failed = {
+    'hourly_log': False,
+    'daily_log': False,
+    'monthly_log': False,
+}
+
 isRunning = True
 
 def printLog(msg: str, level: str = 'info'):
@@ -229,7 +235,9 @@ def get_evc_log(register_groups) -> dict:
     
     return {'items': register_items, 'slaveID': current_slave_id}
 
-def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0):
+def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0) -> dict:
+    success_status = 0
+
     if kind in archive_log_list:
         archive_log_group_ids = get_log_group_ids(group_ids)
         
@@ -279,8 +287,13 @@ def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0):
                     all_archive_log_items.append(archive_log_items)
             except Exception as e:
                 printLog(e, 'error')
+                if retention == 0:
+                    success_status = 2
+            else:
+                if retention == 0:
+                    success_status = 1
         
-        return all_archive_log_items
+        return {'items': all_archive_log_items, 'status': success_status}
 
 def send_current_log(deviceID: int, items: tuple = None, insert_log = False) -> bool:
     if insert_log == True:
@@ -733,22 +746,25 @@ while isRunning:
                     current_dtu_str = dt_utc_to_current(register_items['dtu'])
 
                     """ Get hourly log when EVC hour has changed """
-                    if last_dtu_str.hour != current_dtu_str.hour and archive_log_enabled['hourly_log'] == True:
-                        while 'len_archive_log' not in vars():
-                            len_archive_log = len(send_archive_log(current_device_id, mb_config_item['hourly_log']['group_ids'], 'hourly_log'))
-                        del len_archive_log
+                    if (last_dtu_str.hour != current_dtu_str.hour or archive_log_failed['hourly_log'] == True) and archive_log_enabled['hourly_log'] == True:
+                        if send_archive_log(current_device_id, mb_config_item['hourly_log']['group_ids'], 'hourly_log')['status'] != 1:
+                            archive_log_failed['hourly_log'] = True
+                        else:
+                            archive_log_failed['hourly_log'] = False if archive_log_failed['hourly_log'] == True else archive_log_failed['hourly_log']
 
                     """ Get daily log when EVC day has changed """
-                    if last_dtu_str.day != current_dtu_str.day and archive_log_enabled['daily_log'] == True:
-                        while 'len_archive_log' not in vars():
-                            len_archive_log = len(send_archive_log(current_device_id, mb_config_item['daily_log']['group_ids'], 'daily_log'))
-                        del len_archive_log
+                    if (last_dtu_str.day != current_dtu_str.day or archive_log_failed['daily_log'] == True) and archive_log_enabled['daily_log'] == True:
+                        if send_archive_log(current_device_id, mb_config_item['daily_log']['group_ids'], 'daily_log')['status'] != 1:
+                            archive_log_failed['daily_log'] = True
+                        else:
+                            archive_log_failed['daily_log'] = False if archive_log_failed['daily_log'] == True else archive_log_failed['daily_log']
 
                     """ Get monthly log when EVC month has changed """
-                    if last_dtu_str.month != current_dtu_str.month and archive_log_enabled['monthly_log'] == True:
-                        while 'len_archive_log' not in vars():
-                            len_archive_log = len(send_archive_log(current_device_id, mb_config_item['monthly_log']['group_ids'], 'monthly_log'))
-                        del len_archive_log
+                    if (last_dtu_str.month != current_dtu_str.month or archive_log_failed['monthly_log'] == True) and archive_log_enabled['monthly_log'] == True:
+                        if send_archive_log(current_device_id, mb_config_item['monthly_log']['group_ids'], 'monthly_log')['status'] != 1:
+                            archive_log_failed['monthly_log'] = True
+                        else:
+                            archive_log_failed['monthly_log'] = False if archive_log_failed['monthly_log'] == True else archive_log_failed['monthly_log']
 
                     """ START - Check Request Log """
                     q_check_request_log = 'SELECT id, archiveLog, logRetention FROM ptzbox5_request_log WHERE deviceID = ? AND requestStatus = 0 AND archiveLog >= 0 AND archiveLog < ?'
@@ -758,7 +774,7 @@ while isRunning:
                         rows_request_log = db_cur.fetchall()
                         for row_request_log in rows_request_log:
                             if row_request_log[2] <= mb_config_item[archive_log_list[row_request_log[1]]]['max_retention'] and archive_log_enabled[archive_log_list[row_request_log[1]]] == True:
-                                if len(send_archive_log(current_device_id, mb_config_item[archive_log_list[row_request_log[1]]]['group_ids'], archive_log_list[row_request_log[1]], row_request_log[2])) > 0:
+                                if len(send_archive_log(current_device_id, mb_config_item[archive_log_list[row_request_log[1]]]['group_ids'], archive_log_list[row_request_log[1]], row_request_log[2])['items']) > 0:
                                     q_request_log_status = 1
                                 else:
                                     q_request_log_status = 2
