@@ -1,7 +1,7 @@
 - type: rtuovertcp
-  host: <Modbus Master Host/IP>
-  port: <Modbus Master TCP Port>
-  name: <Modbus Master Identifier>
+  host: 192.168.85.131
+  port: 8899
+  name: mb_kat_tis
   timeout_seconds: 5
   wait_milliseconds: 50
   current_log:
@@ -10,11 +10,11 @@
     group_ids:
     - 1
   hourly_log:
-    max_retention: 72
+    max_retention: 108
     group_ids:
     - 2
   daily_log:
-    max_retention: 31
+    max_retention: 30
     group_ids:
     - 3
   monthly_log:
