@@ -44,7 +44,7 @@ def decode_results(results, data_type):
     elif data_type == 'dt1':
         decoded = results.decode_32bit_uint()
     elif data_type == 'dt2':
-        hex_values = ["{:02x}".format(register) for register in results]
+        hex_values = ["{:04x}".format(register) for register in results]
         decoded = "".join(hex_values)
 
     return decoded

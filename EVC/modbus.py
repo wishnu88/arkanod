@@ -63,6 +63,10 @@ archive_log_failed = {
     'monthly_log': False,
 }
 
+group_id_list = {}
+register_conversion_fields = {archive_log: [] for archive_log in archive_log_list}
+q_insert_log = {archive_log: [] for archive_log in archive_log_list}
+
 isRunning = True
 
 def printLog(msg: str, level: str = 'info'):
@@ -131,7 +135,7 @@ def decode_results(results, data_type):
     elif data_type == 'dt1':
         decoded = results.decode_32bit_uint()
     elif data_type == 'dt2':
-        hex_values = ["{:02x}".format(register) for register in results]
+        hex_values = ["{:04x}".format(register) for register in results]
         decoded = "".join(hex_values)
 
     return decoded
@@ -181,6 +185,8 @@ def get_evc_log(register_groups) -> dict:
     
     register_group_address = {}
     register_items = {}
+    register_slave_ids = {}
+
     for register_group in register_groups:
 
         register_gap = 0 if 'gap' not in register_group else register_group['gap']
@@ -235,8 +241,9 @@ def get_evc_log(register_groups) -> dict:
             if len(current_registers) > 0:
                 register_value = decode_results(convert_registers(current_registers, register_conversion['swap'] if 'swap' in register_conversion else None), register_conversion['data_type'])
                 register_items[register_conversion['name']] = round(register_value, register_value_precision) if register_value_precision != "none" else register_value
+                register_slave_ids[register_conversion['name']] = current_slave_id
     
-    return {'items': register_items, 'slaveID': current_slave_id}
+    return {'items': register_items, 'slaveIDs': register_slave_ids}
 
 def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0) -> dict:
     success_status = 0
@@ -352,15 +359,28 @@ def register_conversion_paramcheck(param_name: str, conversion_item_index: int):
     global mb_config_check_item, error_len, register_conversion_item, mb_config_detail
     """Sanity check for name, group_id, registers, data_type, swap, precision settings"""
     if param_name in register_conversion_item:
-        if param_name == 'group_id':
-            exists_count = 0
-            for current_register_group in mb_config_check_item['register_group']:
-                if register_conversion_item[param_name] == current_register_group['group_id']:
-                    exists_count = exists_count + 1
-            
-            if exists_count == 0:
-                printLog('[Item %s - register_conversion - Conversion Item %s] Unable to find group_id: %s in any register_group.' % (item_index, conversion_item_index, register_conversion_item[param_name]), 'error')
-                error_len = error_len + 1
+        if param_name == 'group_ids':
+            for curr_group_id in register_conversion_item[param_name]:
+                exists_count = 0
+                for current_register_group in mb_config_check_item['register_group']:
+                    if curr_group_id == current_register_group['group_id']:
+                        exists_count = 1
+                        break
+
+                if exists_count == 0:
+                    printLog('[Item %s - register_conversion - Conversion Item %s] Unable to find group_ids: %s in any register_group.' % (item_index, conversion_item_index, curr_group_id), 'error')
+                    error_len = error_len + 1
+
+            # for current_register_group in mb_config_check_item['register_group']:
+            #     exists_count = 0
+            #     for curr_group_id in register_conversion_item[param_name]:
+            #         if curr_group_id == current_register_group['group_id']:
+            #             exists_count = exists_count + 1
+
+            #     if exists_count == 0:
+            #         printLog('[Item %s - register_conversion - Conversion Item %s] Unable to find group_ids: %s in any register_group.' % (item_index, conversion_item_index, curr_group_id), 'error')
+            #         error_len = error_len + 1
+            #         sys.exit(0)
         elif param_name == 'registers':
             if isinstance(register_conversion_item[param_name], list) == False:
                 printLog('[Item %s - register_conversion - Group Item %s] Invalid %s settings for conversion name: %s. It should be a list [start_reg_addr, end_reg_addr].' % (item_index, conversion_item_index, param_name, register_conversion_item['name']), 'error')
@@ -529,6 +549,11 @@ with open('modbus.yaml', 'r') as mb_config:
                     error_len = error_len + 1
 
                 """ END - Sanity check for current_log --> group_ids settings """
+
+                """ Create Group ID list for current_log """
+                group_id_list['current_log'] = mb_config_check_item['current_log']['group_ids']
+                register_conversion_fields.update({'current_log': []})
+
             else:
                 printLog('[Item %s] Unable to find current_log settings.' % item_index, 'error')
                 error_len = error_len + 1
@@ -578,6 +603,10 @@ with open('modbus.yaml', 'r') as mb_config:
                         error_len = error_len + 1
 
                     """ END - Sanity check for hourly_log, daily_log, monthly_log --> group_ids settings """
+
+                    """ Create Group ID list for hourly_log, daily_log, monthly_log """
+                    group_id_list[current_archive_log] = mb_config_check_item[current_archive_log]['group_ids']
+
                 else:
                     printLog('[Item %s] Unable to find %s settings. Disabling it.' % (item_index, current_archive_log))
                     archive_log_enabled[current_archive_log] = False
@@ -609,17 +638,30 @@ with open('modbus.yaml', 'r') as mb_config:
             """ START - Sanity check for register_conversion settings """
 
             if 'register_conversion' in mb_config_check_item:
+                
                 if isinstance(mb_config_check_item['register_conversion'], list) == True:
                     for grp_item_index, register_conversion_item in enumerate(mb_config_check_item['register_conversion']):
-                        """ START - Sanity check for name, group_id, registers, data_type, swap, precision settings """
+                        """ START - Sanity check for name, group_ids, registers, data_type, swap, precision settings """
                         for param_name in ['name',
-                                           'group_id',
+                                           'group_ids',
                                            'registers',
                                            'data_type',
                                            'swap',
                                            'precision']:
                             register_conversion_paramcheck(param_name, grp_item_index)
-                        """ END - Sanity check for name, group_id, registers, data_type, swap, precision settings """
+                        """ END - Sanity check for name, group_ids, registers, data_type, swap, precision settings """
+
+                        """ List items for current_log and archive log DB query """
+                        for group_id in register_conversion_item['group_ids']:
+                            if group_id in group_id_list['current_log']:
+                                register_conversion_fields['current_log'].append(register_conversion_item['name'])
+                            elif group_id in group_id_list['hourly_log']:
+                                register_conversion_fields['hourly_log'].append(register_conversion_item['name'])
+                            elif group_id in group_id_list['daily_log']:
+                                register_conversion_fields['daily_log'].append(register_conversion_item['name'])
+                            elif group_id in group_id_list['monthly_log']:
+                                register_conversion_fields['monthly_log'].append(register_conversion_item['name'])
+
                 else:
                     printLog('[Item %s] Invalid register_conversion settings (register_conversion: ). It should be a list.' % item_index, 'error')
                     error_len = error_len + 1
@@ -693,6 +735,13 @@ with open('db.yaml', 'r') as db_config:
         printLog(f"Error connecting to the database: {e}", 'critical')
         app_exit(1)
 
+    """ START -- Create Query templates and tables if not created yet """
+    register_conversion_fields['current_log'] = list(dict.fromkeys(register_conversion_fields['current_log']))
+    q_update_current_log = "UPDATE %s_current_log SET %s = ? WHERE deviceID = ?" % (db_config_detail[0]['tbl_prefix'], " = ?, ".join(register_conversion_fields['current_log']))
+    for current_archive_log in q_insert_log:
+        register_conversion_fields[current_archive_log] = list(dict.fromkeys(register_conversion_fields[current_archive_log]))
+        q_insert_log[current_archive_log] = "INSERT IGNORE INTO %s (deviceID, %s) VALUES (%s?)" % (db_config_detail[0]['tbl_prefix'] + '_' + current_archive_log, ', '.join(register_conversion_fields[current_archive_log]), "?," * len(register_conversion_fields[current_archive_log]))
+    """ END -- Create Query templates and tables if not created yet """
 
 current_log_timers = {}
 for mb_config_item in mb_config_detail:
