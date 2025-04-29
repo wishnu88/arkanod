@@ -42,7 +42,8 @@ data_type_list = [
     'uint16',
     'uint32',
     'uint64',
-    'dt1'
+    'dt1',
+    'dt2'
 ]
 
 archive_log_list = [
@@ -180,7 +181,7 @@ def get_log_group_ids(register_group_ids) -> list:
 
     return register_group_address
 
-def get_evc_log(register_groups) -> dict:
+def get_evc_log(register_groups, slaveID = None) -> dict:
     global client
     
     register_group_address = {}
@@ -188,13 +189,14 @@ def get_evc_log(register_groups) -> dict:
     register_slave_ids = {}
 
     for register_group in register_groups:
-
+        
+        current_slave_id = int(register_group['slave'])
+        if slaveID is not None and slaveID != current_slave_id:
+            continue
         register_gap = 0 if 'gap' not in register_group else register_group['gap']
 
-        current_slave_id = int(register_group['slave'])
         """ Modbus read delay """
         sleep((mb_config_item['wait_milliseconds'] / 1000))
-
         try:
             if register_group['type'] == "input":
                 result = client.read_input_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
@@ -224,9 +226,15 @@ def get_evc_log(register_groups) -> dict:
             continue
 
         register_group_address[register_group['group_id']] = register_group_values    
-            
+
         for register_conversion in mb_config_item['register_conversion']:
-            if register_conversion['group_id'] != register_group['group_id']:
+            group_exists = 0
+            for group_id in register_conversion['group_ids']:
+                if group_id == register_group['group_id']:
+                    group_exists = 1
+                    break
+            
+            if group_exists == 0:
                 continue
 
             current_registers = []
@@ -234,18 +242,18 @@ def get_evc_log(register_groups) -> dict:
 
             for register_i in range(int(register_conversion['registers'][0]) + register_gap, int(register_conversion['registers'][1]) + register_gap + 1):
                 try:
-                    current_registers.append(register_group_address[register_conversion['group_id']][register_i])
+                    current_registers.append(register_group_address[register_group['group_id']][register_i])
                 except:
                     continue
-            
+
             if len(current_registers) > 0:
-                register_value = decode_results(convert_registers(current_registers, register_conversion['swap'] if 'swap' in register_conversion else None), register_conversion['data_type'])
+                register_value = decode_results(current_registers if register_conversion['data_type'] == 'dt2' else convert_registers(current_registers, register_conversion['swap'] if 'swap' in register_conversion else None), register_conversion['data_type'])
                 register_items[register_conversion['name']] = round(register_value, register_value_precision) if register_value_precision != "none" else register_value
                 register_slave_ids[register_conversion['name']] = current_slave_id
     
     return {'items': register_items, 'slaveIDs': register_slave_ids}
 
-def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0) -> dict:
+def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0, slaveID: int = 1) -> dict:
     success_status = 0
 
     if kind in archive_log_list:
@@ -765,79 +773,102 @@ while isRunning:
 
             current_log_group_ids = get_log_group_ids(mb_config_item['current_log']['group_ids'])
             current_log_items = get_evc_log(current_log_group_ids)
-            register_items = current_log_items['items']
-            current_slave_id = current_log_items['slaveID']
 
-            if 'current_slave_id' in vars() and len(register_items) > 0:
-                if 'current_device_id' not in vars():
-                    q_get_deviceID = "SELECT id FROM ptzbox5_devices WHERE mbmaster_name = ? AND slaveID = ? LIMIT 1"
-                    db_cur.execute(q_get_deviceID, (mb_config_item['name'], current_slave_id))
-                    rows_device_id = db_cur.fetchone()
+            all_register_items = current_log_items['items']
+            # print(current_log_items)
+            # print(list(dict.fromkeys(current_log_items['slaveIDs'])))
+            # sys.exit(0)
+            print(all_register_items)
+            sys.exit()
+            all_slave_id = []
+            for item_name, slave_id in current_log_items['slaveIDs'].items():
+                if slave_id not in all_slave_id:
+                    all_slave_id.append(slave_id)
 
-                    current_device_id = rows_device_id[0]
-                    q_get_current = "SELECT id FROM ptzbox5_current_log WHERE deviceID = ?"
-                    db_cur.execute(q_get_current, (current_device_id,))
+            for current_slave_id in all_slave_id:
+                register_items = {}
+                for item_name in all_register_items:
+                    if current_log_items['slaveIDs'][item_name] == current_slave_id:
+                        register_items[item_name] = all_register_items[item_name]
 
-                    if db_cur.rowcount == 0:
-                        send_current_log(current_device_id, insert_log=True)
+                if 'current_slave_id' in vars() and len(register_items) > 0:
+                    if 'current_device_id' not in vars():
+                        q_get_deviceID = "SELECT id FROM ptzbox5_devices WHERE mbmaster_name = ? AND slaveID = ? LIMIT 1"
+                        db_cur.execute(q_get_deviceID, (mb_config_item['name'], current_slave_id))
 
-                send_current_log(current_device_id, (dt_utc_to_current(register_items['dtu']),
-                                                     register_items['Vb'],
-                                                     register_items['Vm'],
-                                                     register_items['p1'],
-                                                     register_items['t'],
-                                                     register_items['Qm'],
-                                                     register_items['Qb'],
-                                                     register_items['EPwrSActive'],
-                                                     register_items['EPwrSCheck'],
-                                                     register_items['ETL'],
-                                                     register_items['BattLvl']))
+                        if db_cur.rowcount == 0:
+                            continue
 
-                if 'dtu' in register_items:
-                    last_dtu_str = dt_utc_to_current(last_dtu)
-                    current_dtu_str = dt_utc_to_current(register_items['dtu'])
+                        rows_device_id = db_cur.fetchone()
 
-                    """ Get hourly log when EVC hour has changed """
-                    if (last_dtu_str.hour != current_dtu_str.hour or archive_log_failed['hourly_log'] == True) and archive_log_enabled['hourly_log'] == True:
-                        if send_archive_log(current_device_id, mb_config_item['hourly_log']['group_ids'], 'hourly_log')['status'] != 1:
-                            archive_log_failed['hourly_log'] = True
-                        else:
-                            archive_log_failed['hourly_log'] = False if archive_log_failed['hourly_log'] == True else archive_log_failed['hourly_log']
+                        current_device_id = rows_device_id[0]
+                        q_get_current = "SELECT id FROM ptzbox5_current_log WHERE deviceID = ?"
+                        db_cur.execute(q_get_current, (current_device_id,))
 
-                    """ Get daily log when EVC day has changed """
-                    if (last_dtu_str.day != current_dtu_str.day or archive_log_failed['daily_log'] == True) and archive_log_enabled['daily_log'] == True:
-                        if send_archive_log(current_device_id, mb_config_item['daily_log']['group_ids'], 'daily_log')['status'] != 1:
-                            archive_log_failed['daily_log'] = True
-                        else:
-                            archive_log_failed['daily_log'] = False if archive_log_failed['daily_log'] == True else archive_log_failed['daily_log']
+                        if db_cur.rowcount == 0:
+                            send_current_log(current_device_id, insert_log=True)
 
-                    """ Get monthly log when EVC month has changed """
-                    if (last_dtu_str.month != current_dtu_str.month or archive_log_failed['monthly_log'] == True) and archive_log_enabled['monthly_log'] == True:
-                        if send_archive_log(current_device_id, mb_config_item['monthly_log']['group_ids'], 'monthly_log')['status'] != 1:
-                            archive_log_failed['monthly_log'] = True
-                        else:
-                            archive_log_failed['monthly_log'] = False if archive_log_failed['monthly_log'] == True else archive_log_failed['monthly_log']
+                    send_current_log(current_device_id, (dt_utc_to_current(register_items['dtu']),
+                                                        register_items['Vb'],
+                                                        register_items['Vm'],
+                                                        register_items['p1'],
+                                                        register_items['t'],
+                                                        register_items['Qm'],
+                                                        register_items['Qb'],
+                                                        register_items['EPwrSActive'],
+                                                        register_items['EPwrSCheck'],
+                                                        register_items['ETL'],
+                                                        register_items['BattLvl']))
 
-                    """ START - Check Request Log """
-                    q_check_request_log = 'SELECT id, archiveLog, logRetention FROM ptzbox5_request_log WHERE deviceID = ? AND requestStatus = 0 AND archiveLog >= 0 AND archiveLog < ?'
-                    db_cur.execute(q_check_request_log, (current_device_id, len(archive_log_list)))
+                    # print(mb_config_item['current_log'])
+                    # print('test')
+                    # sys.exit()
 
-                    if db_cur.rowcount > 0:
-                        rows_request_log = db_cur.fetchall()
-                        for row_request_log in rows_request_log:
-                            if row_request_log[2] <= mb_config_item[archive_log_list[row_request_log[1]]]['max_retention'] and archive_log_enabled[archive_log_list[row_request_log[1]]] == True:
-                                if len(send_archive_log(current_device_id, mb_config_item[archive_log_list[row_request_log[1]]]['group_ids'], archive_log_list[row_request_log[1]], row_request_log[2])['items']) > 0:
-                                    q_request_log_status = 1
+                    if 'dtu' in register_items:
+                        last_dtu_str = dt_utc_to_current(last_dtu)
+                        current_dtu_str = dt_utc_to_current(register_items['dtu'])
+
+                        """ Get hourly log when EVC hour has changed """
+                        if (last_dtu_str.hour != current_dtu_str.hour or archive_log_failed['hourly_log'] == True) and archive_log_enabled['hourly_log'] == True:
+                            if send_archive_log(current_device_id, mb_config_item['hourly_log']['group_ids'], 'hourly_log')['status'] != 1:
+                                archive_log_failed['hourly_log'] = True
+                            else:
+                                archive_log_failed['hourly_log'] = False if archive_log_failed['hourly_log'] == True else archive_log_failed['hourly_log']
+
+                        """ Get daily log when EVC day has changed """
+                        if (last_dtu_str.day != current_dtu_str.day or archive_log_failed['daily_log'] == True) and archive_log_enabled['daily_log'] == True:
+                            if send_archive_log(current_device_id, mb_config_item['daily_log']['group_ids'], 'daily_log')['status'] != 1:
+                                archive_log_failed['daily_log'] = True
+                            else:
+                                archive_log_failed['daily_log'] = False if archive_log_failed['daily_log'] == True else archive_log_failed['daily_log']
+
+                        """ Get monthly log when EVC month has changed """
+                        if (last_dtu_str.month != current_dtu_str.month or archive_log_failed['monthly_log'] == True) and archive_log_enabled['monthly_log'] == True:
+                            if send_archive_log(current_device_id, mb_config_item['monthly_log']['group_ids'], 'monthly_log')['status'] != 1:
+                                archive_log_failed['monthly_log'] = True
+                            else:
+                                archive_log_failed['monthly_log'] = False if archive_log_failed['monthly_log'] == True else archive_log_failed['monthly_log']
+
+                        """ START - Check Request Log """
+                        q_check_request_log = 'SELECT id, archiveLog, logRetention FROM ptzbox5_request_log WHERE deviceID = ? AND requestStatus = 0 AND archiveLog >= 0 AND archiveLog < ?'
+                        db_cur.execute(q_check_request_log, (current_device_id, len(archive_log_list)))
+
+                        if db_cur.rowcount > 0:
+                            rows_request_log = db_cur.fetchall()
+                            for row_request_log in rows_request_log:
+                                if row_request_log[2] <= mb_config_item[archive_log_list[row_request_log[1]]]['max_retention'] and archive_log_enabled[archive_log_list[row_request_log[1]]] == True:
+                                    if len(send_archive_log(current_device_id, mb_config_item[archive_log_list[row_request_log[1]]]['group_ids'], archive_log_list[row_request_log[1]], row_request_log[2])['items']) > 0:
+                                        q_request_log_status = 1
+                                    else:
+                                        q_request_log_status = 2
                                 else:
                                     q_request_log_status = 2
-                            else:
-                                q_request_log_status = 2
 
-                            q_update_request_log = 'UPDATE ptzbox5_request_log SET requestStatus = ? WHERE id = ?'
-                            db_cur.execute(q_update_request_log, (q_request_log_status, row_request_log[0]))
-                    """ END - Check Request Log """
+                                q_update_request_log = 'UPDATE ptzbox5_request_log SET requestStatus = ? WHERE id = ?'
+                                db_cur.execute(q_update_request_log, (q_request_log_status, row_request_log[0]))
+                        """ END - Check Request Log """
 
-                    last_dtu = register_items['dtu']
+                        last_dtu = register_items['dtu']
     try:
         sleep(0.1)
     except KeyboardInterrupt:
