@@ -8,7 +8,7 @@
   - group_id: 1
     slave: 1
     address: 0
-    count: 67
+    count: 68
     type: holding
   - group_id: 2
     slave: 1
@@ -198,49 +198,49 @@
   - name: Compressibility_Method
     group_ids:
     - 1
-    registers: [57, 57]
-    data_type: uint16
+    registers: [57, 58]
+    data_type: float32
     swap: word_byte
     # precision: 3
   - name: p_bar
     group_ids:
     - 1
-    registers: [58, 59]
+    registers: [59, 60]
     data_type: float32
     swap: word_byte
     # precision: 3
   - name: p_rel
     group_ids:
     - 1
-    registers: [60, 61]
+    registers: [61, 62]
     data_type: float32
     swap: word_byte
     # precision: 3
-  - name: ExPwr
-    group_ids:
-    - 1
-    registers: [62, 62]
-    data_type: uint16
-    swap: word_byte
-    # precision: 3
-  - name: SlaveID
+  - name: EXTPWR
     group_ids:
     - 1
     registers: [63, 63]
-    data_type: uint16
+    data_type: uint8
     swap: word_byte
     # precision: 3
   - name: Cover
     group_ids:
     - 1
     registers: [64, 64]
+    data_type: uint8
+    swap: word_byte
+    # precision: 3
+  - name: SlaveID
+    group_ids:
+    - 1
+    registers: [65, 65]
     data_type: uint16
     swap: word_byte
     # precision: 3
   - name: SN
     group_ids:
     - 1
-    registers: [65, 66]
+    registers: [66, 67]
     data_type: uint32
     swap: word_byte
     # precision: 3

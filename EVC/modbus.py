@@ -35,15 +35,19 @@ data_type_list = [
     'float16',
     'float32',
     'float64',
+    'int8',
     'int16',
     'int32',
     'int64',
     'string',
+    'uint8',
     'uint16',
     'uint32',
     'uint64',
     'dt1',
-    'dt2'
+    'dt2',
+    'bits',
+    'ignore'
 ]
 
 archive_log_list = [
@@ -113,12 +117,18 @@ def convert_registers(registers, swap_type: str = "none"):
 
 def decode_results(results, data_type):
 
-    if data_type == 'float16':
+    if data_type == 'ignore':
+        decoded = results.skip_bytes(8)
+    elif data_type == 'bits':
+        decoded = results.decode_bits()
+    elif data_type == 'float16':
         decoded = results.decode_16bit_float()
     elif data_type == 'float32':
         decoded = results.decode_32bit_float()
     elif data_type == 'float64':
         decoded = results.decode_64bit_float()
+    elif data_type == 'int8':
+        decoded = results.decode_8bit_int()
     elif data_type == 'int16':
         decoded = results.decode_16bit_int()
     elif data_type == 'int32':
@@ -127,6 +137,8 @@ def decode_results(results, data_type):
         decoded = results.decode_64bit_int()
     elif data_type == 'string':
         decoded = results.decode_string()
+    elif data_type == 'uint8':
+        decoded = results.decode_8bit_uint()
     elif data_type == 'uint16':
         decoded = results.decode_16bit_uint()
     elif data_type == 'uint32':
