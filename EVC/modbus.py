@@ -791,7 +791,7 @@ while isRunning:
             # print(list(dict.fromkeys(current_log_items['slaveIDs'])))
             # sys.exit(0)
             print(all_register_items)
-            sys.exit()
+            # sys.exit()
             all_slave_id = []
             for item_name, slave_id in current_log_items['slaveIDs'].items():
                 if slave_id not in all_slave_id:
@@ -880,7 +880,7 @@ while isRunning:
                                 db_cur.execute(q_update_request_log, (q_request_log_status, row_request_log[0]))
                         """ END - Check Request Log """
 
-                        last_dtu = register_items['dtu']
+                        last_dtu = register_items[mb_config_item['current_log']['evc_time_regname']]
     try:
         sleep(0.1)
     except KeyboardInterrupt:
