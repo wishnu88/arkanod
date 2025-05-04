@@ -400,7 +400,7 @@
     group_ids:
     - 2
     registers: [256, 259]
-    data_type: uint64
+    data_type: bits
     swap: word_byte
     # precision: 3
   - name: Cover

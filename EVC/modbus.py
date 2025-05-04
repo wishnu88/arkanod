@@ -278,6 +278,7 @@ def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0, sl
                     archive_log_group_ids[group_id_index]['gap'] = n_iter * archive_log_group_ids[group_id_index]['count']
 
             archive_log_items = get_evc_log(archive_log_group_ids)['items']
+            print(archive_log_items)
 
             if retention > 0:
                 for group_id_index in range(0, len(archive_log_group_ids)):
@@ -342,8 +343,13 @@ def send_current_log(deviceID: int, items: tuple = None, insert_log = False) -> 
             return False
     return True
 
-def dt_utc_to_current(timestamp: int) -> datetime:
-    return datetime.strptime(str(datetime.fromtimestamp(timestamp, timezone.utc)), '%Y-%m-%d %H:%M:%S%z')
+def dt_utc_to_current(datetime_str: int, data_type: str = 'dt1') -> datetime:
+    data_type = 'dt1' if data_type == 'dt2' and datetime_str == 0 else data_type
+
+    if data_type == 'dt1':
+        return datetime.strptime(str(datetime.fromtimestamp(datetime_str, timezone.utc)), '%Y-%m-%d %H:%M:%S%z')
+    elif data_type == 'dt2':             
+        return datetime.strptime(datetime_str, '%y%m%d%H%M%S')
 
 def signal_term_handler(signal, frame):
    app_exit()
@@ -669,6 +675,13 @@ with open('modbus.yaml', 'r') as mb_config:
                                            'swap',
                                            'precision']:
                             register_conversion_paramcheck(param_name, grp_item_index)
+
+                        if 'evctime_reg' not in vars() and register_conversion_item['name'] == mb_config_check_item['current_log']['evc_time_regname']:
+                            evctime_reg = {
+                                'name': register_conversion_item['name'],
+                                'data_type': register_conversion_item['data_type']
+                            }
+
                         """ END - Sanity check for name, group_ids, registers, data_type, swap, precision settings """
 
                         """ List items for current_log and archive log DB query """
@@ -791,6 +804,7 @@ while isRunning:
             # print(list(dict.fromkeys(current_log_items['slaveIDs'])))
             # sys.exit(0)
             print(all_register_items)
+
             # sys.exit()
             all_slave_id = []
             for item_name, slave_id in current_log_items['slaveIDs'].items():
@@ -820,32 +834,33 @@ while isRunning:
                         if db_cur.rowcount == 0:
                             send_current_log(current_device_id, insert_log=True)
 
-                    send_current_log(current_device_id, (dt_utc_to_current(register_items['dtu']),
-                                                        register_items['Vb'],
-                                                        register_items['Vm'],
-                                                        register_items['p1'],
-                                                        register_items['t'],
-                                                        register_items['Qm'],
-                                                        register_items['Qb'],
-                                                        register_items['EPwrSActive'],
-                                                        register_items['EPwrSCheck'],
-                                                        register_items['ETL'],
-                                                        register_items['BattLvl']))
+                    # send_current_log(current_device_id, (dt_utc_to_current(register_items['dtu']),
+                    #                                     register_items['Vb'],
+                    #                                     register_items['Vm'],
+                    #                                     register_items['p1'],
+                    #                                     register_items['t'],
+                    #                                     register_items['Qm'],
+                    #                                     register_items['Qb'],
+                    #                                     register_items['EPwrSActive'],
+                    #                                     register_items['EPwrSCheck'],
+                    #                                     register_items['ETL'],
+                    #                                     register_items['BattLvl']))
 
                     # print(mb_config_item['current_log'])
                     # print('test')
                     # sys.exit()
 
-                    if 'dtu' in register_items:
-                        last_dtu_str = dt_utc_to_current(last_dtu)
-                        current_dtu_str = dt_utc_to_current(register_items['dtu'])
+                    if evctime_reg['name'] in register_items:
+                        last_dtu_str = dt_utc_to_current(last_dtu, evctime_reg['data_type'])
+                        current_dtu_str = dt_utc_to_current(register_items[evctime_reg['name']], evctime_reg['data_type'])
 
                         """ Get hourly log when EVC hour has changed """
                         if (last_dtu_str.hour != current_dtu_str.hour or archive_log_failed['hourly_log'] == True) and archive_log_enabled['hourly_log'] == True:
-                            if send_archive_log(current_device_id, mb_config_item['hourly_log']['group_ids'], 'hourly_log')['status'] != 1:
-                                archive_log_failed['hourly_log'] = True
-                            else:
-                                archive_log_failed['hourly_log'] = False if archive_log_failed['hourly_log'] == True else archive_log_failed['hourly_log']
+                            # if send_archive_log(current_device_id, mb_config_item['hourly_log']['group_ids'], 'hourly_log')['status'] != 1:
+                            #     archive_log_failed['hourly_log'] = True
+                            # else:
+                            #     archive_log_failed['hourly_log'] = False if archive_log_failed['hourly_log'] == True else archive_log_failed['hourly_log']
+                            print('bypassed_h')
 
                         """ Get daily log when EVC day has changed """
                         if (last_dtu_str.day != current_dtu_str.day or archive_log_failed['daily_log'] == True) and archive_log_enabled['daily_log'] == True:
@@ -880,7 +895,7 @@ while isRunning:
                                 db_cur.execute(q_update_request_log, (q_request_log_status, row_request_log[0]))
                         """ END - Check Request Log """
 
-                        last_dtu = register_items[mb_config_item['current_log']['evc_time_regname']]
+                        last_dtu = register_items[evctime_reg['name']]
     try:
         sleep(0.1)
     except KeyboardInterrupt:
