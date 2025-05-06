@@ -32,10 +32,12 @@
     group_ids:
     - 1
   hourly_log:
+    debug: true
     max_retention: 108
     group_ids:
     - 2
   daily_log:
+    debug: true
     max_retention: 30
     group_ids:
     - 3
@@ -400,7 +402,7 @@
     group_ids:
     - 2
     registers: [256, 259]
-    data_type: bits
+    data_type: uint64
     swap: word_byte
     # precision: 3
   - name: Cover

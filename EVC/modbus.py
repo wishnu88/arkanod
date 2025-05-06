@@ -69,7 +69,10 @@ archive_log_failed = {
 }
 
 group_id_list = {}
-register_conversion_fields = {archive_log: [] for archive_log in archive_log_list}
+
+if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
+    register_conversion_fields = {archive_log: [] for archive_log in archive_log_list}
+
 q_insert_log = {archive_log: [] for archive_log in archive_log_list}
 
 isRunning = True
@@ -203,6 +206,7 @@ def get_evc_log(register_groups, slaveID = None) -> dict:
     for register_group in register_groups:
         
         current_slave_id = int(register_group['slave'])
+        register_items[current_slave_id] = {}
         if slaveID is not None and slaveID != current_slave_id:
             continue
         register_gap = 0 if 'gap' not in register_group else register_group['gap']
@@ -259,11 +263,11 @@ def get_evc_log(register_groups, slaveID = None) -> dict:
                     continue
 
             if len(current_registers) > 0:
-                register_value = decode_results(current_registers if register_conversion['data_type'] == 'dt2' else convert_registers(current_registers, register_conversion['swap'] if 'swap' in register_conversion else None), register_conversion['data_type'])
-                register_items[register_conversion['name']] = round(register_value, register_value_precision) if register_value_precision != "none" else register_value
+                register_value = decode_results(current_registers if register_conversion['data_type'] in ['dt1', 'dt2'] else convert_registers(current_registers, register_conversion['swap'] if 'swap' in register_conversion else None), register_conversion['data_type'])
+                register_items[current_slave_id][register_conversion['name']] = round(register_value, register_value_precision) if register_value_precision != "none" else register_value
                 register_slave_ids[register_conversion['name']] = current_slave_id
-    
-    return {'items': register_items, 'slaveIDs': register_slave_ids}
+
+    return {'items': register_items if slaveID is None else register_items[slaveID], 'slaveIDs': register_slave_ids}
 
 def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0, slaveID: int = 1) -> dict:
     success_status = 0
@@ -277,43 +281,18 @@ def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0, sl
                 for group_id_index in range(0, len(archive_log_group_ids)):
                     archive_log_group_ids[group_id_index]['gap'] = n_iter * archive_log_group_ids[group_id_index]['count']
 
-            archive_log_items = get_evc_log(archive_log_group_ids)['items']
-            print(archive_log_items)
+            archive_log_items = get_evc_log(archive_log_group_ids, slaveID)['items']
+
+            if mb_config_item[kind]['debug'] is True:
+                print(archive_log_items)
 
             if retention > 0:
                 for group_id_index in range(0, len(archive_log_group_ids)):
                     del archive_log_group_ids[group_id_index]['gap']
 
-            archive_tbl = "ptzbox5_hourly_log" if kind == "hourly_log" else "ptzbox5_daily_log" if kind == "daily_log" else "ptzbox5_monthly_log"
-            archive_prefix = "h_" if kind == "hourly_log" else "d_" if kind == "daily_log" else "m_"
-
             try:
-                q_insert_archive = "INSERT IGNORE INTO " + archive_tbl + " (deviceID, Vb, Vm, FlowTm, p1Avg, p1Min, p1Max, tAvg, tMin, tMax, QmAvg, QmMin, QmMax, QbAvg, QbMin, QbMax, tambAvg, dVbSum, dVmSum, BattLvl, DTStamp) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
-                items = (
-                    deviceID,
-                    archive_log_items[archive_prefix + 'Vb'],
-                    archive_log_items[archive_prefix + 'Vm'],
-                    archive_log_items[archive_prefix + 'FlowTm'],
-                    archive_log_items[archive_prefix + 'p1Avg'],
-                    archive_log_items[archive_prefix + 'p1Min'],
-                    archive_log_items[archive_prefix + 'p1Max'],
-                    archive_log_items[archive_prefix + 'tAvg'],
-                    archive_log_items[archive_prefix + 'tMin'],
-                    archive_log_items[archive_prefix + 'tMax'],
-                    archive_log_items[archive_prefix + 'QmAvg'],
-                    archive_log_items[archive_prefix + 'QmMin'],
-                    archive_log_items[archive_prefix + 'QmMax'],
-                    archive_log_items[archive_prefix + 'QbAvg'],
-                    archive_log_items[archive_prefix + 'QbMin'],
-                    archive_log_items[archive_prefix + 'QbMax'],
-                    archive_log_items[archive_prefix + 'tambAvg'],
-                    archive_log_items[archive_prefix + 'dVbSum'],
-                    archive_log_items[archive_prefix + 'dVmSum'],
-                    archive_log_items[archive_prefix + 'BattLvl'],
-                    dt_utc_to_current(archive_log_items[archive_prefix + 'DTStamp']),
-                    )
-                
-                db_cur.execute(q_insert_archive, items)
+                q_insert_archive = "INSERT IGNORE INTO %s (deviceID, %s) VALUES (%s)s)" % (db_config_detail[0]['tbl_prefix'] + '_' + kind, ', '.join(archive_log_items), str(deviceID) + ", %(" + ")s, %(".join([item_name for item_name in archive_log_items]))               
+                db_cur.execute(q_insert_archive, archive_log_items)
                 if db_cur.rowcount > 0:
                     all_archive_log_items.append(archive_log_items)
             except Exception as e:
@@ -326,20 +305,27 @@ def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0, sl
         
         return {'items': all_archive_log_items, 'status': success_status}
 
-def send_current_log(deviceID: int, items: tuple = None, insert_log = False) -> bool:
+def send_current_log(deviceID: int, items: dict, insert_log = False) -> bool:
     if insert_log == True:
         try:
-            q_insert_current = "INSERT INTO ptzbox5_current_log (deviceID) VALUES (?)"
+            q_insert_current = "INSERT INTO %s_current_log (deviceID) VALUES (?)" % db_config_detail[0]['tbl_prefix']
             db_cur.execute(q_insert_current, (deviceID,))
         except:
             return False
     else:
         try:
-            """ Insert deviceID to the last element of items for WHERE clause """
-            items = items + (deviceID,)
-            q_update_current = "UPDATE ptzbox5_current_log SET dtu = ?, Vb = ?, Vm = ?, p1 = ?, t = ?, Qm = ?, Qb = ?, EPwrSActive = ?, EPwrSCheck = ?, ETL = ?, BattLvl = ? WHERE deviceID = ?"
-            db_cur.execute(q_update_current, items)
-        except:
+            """ Create current log query template using dictionary """
+            q_update_current_log = "UPDATE %s_current_log SET " % db_config_detail[0]['tbl_prefix']
+            q_update_items = []
+            for item_name in items:
+                q_update_items.append("%s = %%(%s)s" % (item_name, item_name))
+            q_update_current_log += ", ".join(q_update_items) + " WHERE deviceID = %s" % deviceID
+            print(q_update_current_log)
+            # q_update_current = "UPDATE %s_current_log SET dtu = ?, Vb = ?, Vm = ?, p1 = ?, t = ?, Qm = ?, Qb = ?, EPwrSActive = ?, EPwrSCheck = ?, ETL = ?, BattLvl = ? WHERE deviceID = ?" % db_config_detail[0]['tbl_prefix']
+            # return True
+            db_cur.execute(q_update_current_log, items)
+        except Exception as e:
+            printLog(e, 'error')
             return False
     return True
 
@@ -576,9 +562,10 @@ with open('modbus.yaml', 'r') as mb_config:
 
                 """ END - Sanity check for current_log --> group_ids settings """
 
-                """ Create Group ID list for current_log """
-                group_id_list['current_log'] = mb_config_check_item['current_log']['group_ids']
-                register_conversion_fields.update({'current_log': []})
+                """ Create Group ID list for current_log if --create-tables is called """
+                if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
+                    group_id_list['current_log'] = mb_config_check_item['current_log']['group_ids']
+                    register_conversion_fields.update({'current_log': []})
 
             else:
                 printLog('[Item %s] Unable to find current_log settings.' % item_index, 'error')
@@ -684,16 +671,25 @@ with open('modbus.yaml', 'r') as mb_config:
 
                         """ END - Sanity check for name, group_ids, registers, data_type, swap, precision settings """
 
-                        """ List items for current_log and archive log DB query """
-                        for group_id in register_conversion_item['group_ids']:
-                            if group_id in group_id_list['current_log']:
-                                register_conversion_fields['current_log'].append(register_conversion_item['name'])
-                            elif group_id in group_id_list['hourly_log']:
-                                register_conversion_fields['hourly_log'].append(register_conversion_item['name'])
-                            elif group_id in group_id_list['daily_log']:
-                                register_conversion_fields['daily_log'].append(register_conversion_item['name'])
-                            elif group_id in group_id_list['monthly_log']:
-                                register_conversion_fields['monthly_log'].append(register_conversion_item['name'])
+                        """ List items for current_log and archive log table creation """
+                        if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
+                            for group_id in register_conversion_item['group_ids']:
+                                if group_id in group_id_list['current_log']:
+                                    register_conversion_fields['current_log'].append({
+                                        'item': register_conversion_item['name'],
+                                        'data_type': register_conversion_item['data_type']})
+                                elif group_id in group_id_list['hourly_log']:
+                                    register_conversion_fields['hourly_log'].append({
+                                        'item': register_conversion_item['name'],
+                                        'data_type': register_conversion_item['data_type']})
+                                elif group_id in group_id_list['daily_log']:
+                                    register_conversion_fields['daily_log'].append({
+                                        'item': register_conversion_item['name'],
+                                        'data_type': register_conversion_item['data_type']})
+                                elif group_id in group_id_list['monthly_log']:
+                                    register_conversion_fields['monthly_log'].append({
+                                        'item': register_conversion_item['name'],
+                                        'data_type': register_conversion_item['data_type']})
 
                 else:
                     printLog('[Item %s] Invalid register_conversion settings (register_conversion: ). It should be a list.' % item_index, 'error')
@@ -768,13 +764,65 @@ with open('db.yaml', 'r') as db_config:
         printLog(f"Error connecting to the database: {e}", 'critical')
         app_exit(1)
 
-    """ START -- Create Query templates and tables if not created yet """
-    register_conversion_fields['current_log'] = list(dict.fromkeys(register_conversion_fields['current_log']))
-    q_update_current_log = "UPDATE %s_current_log SET %s = ? WHERE deviceID = ?" % (db_config_detail[0]['tbl_prefix'], " = ?, ".join(register_conversion_fields['current_log']))
-    for current_archive_log in q_insert_log:
-        register_conversion_fields[current_archive_log] = list(dict.fromkeys(register_conversion_fields[current_archive_log]))
-        q_insert_log[current_archive_log] = "INSERT IGNORE INTO %s (deviceID, %s) VALUES (%s?)" % (db_config_detail[0]['tbl_prefix'] + '_' + current_archive_log, ', '.join(register_conversion_fields[current_archive_log]), "?," * len(register_conversion_fields[current_archive_log]))
-    """ END -- Create Query templates and tables if not created yet """
+    """ START -- Create tables if --create-tables argument is passed """
+    # register_conversion_fields['current_log'] = list(dict.fromkeys(register_conversion_fields['current_log']))
+    if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
+        data_type = {
+            'float16': 'FLOAT',
+            'float32': 'FLOAT',
+            'float64': 'DOUBLE',
+            'int8': 'TINYINT',
+            'int16': 'SMALLINT',
+            'int32': 'INT',
+            'int64': 'BIGINT',
+            'uint8': 'TINYINT UNSIGNED',
+            'uint16': 'SMALLINT UNSIGNED',
+            'uint32': 'INT UNSIGNED',
+            'uint64': 'BIGINT UNSIGNED',
+            'string':'TEXT',
+            'dt1': 'DATETIME',
+            'dt2': 'DATETIME',
+            'bits': 'BIT(8)'
+        }
+        fields_created = []
+        q_create_tables = {}
+        table_fields = []
+
+        oper_tables = {
+            'devices': "CREATE TABLE `%s_devices` (`id` AUTO_INCREMENT PRIMARY KEY int, `mbmaster_name` varchar(30) NOT NULL, `slaveID` tinyint NOT NULL DEFAULT 1) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4",
+            'request_log': "CREATE TABLE `%s_request_log` (`id` BIGINT AUTO_INCREMENT PRIMARY KEY, `deviceID` int NOT NULL, `archiveLog` tinyint NOT NULL, `logRetention` tinyint NOT NULL, `requestStatus` tinyint NOT NULL DEFAULT 0, `LastUpdated` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" % db_config_detail[0]['tbl_prefix']
+        }
+
+        for oper_table in oper_tables:
+            db_cur.execute('SHOW TABLE STATUS FROM %s WHERE Name = ?' % db_config_detail[0]['db_name'], [db_config_detail[0]['tbl_prefix'] + '_' + oper_table])
+            if db_cur.rowcount > 0:
+                printLog('Table %s is already exists, skipping.' % oper_table)
+                continue
+
+        for log_table in register_conversion_fields:
+            db_cur.execute('SHOW TABLE STATUS FROM %s WHERE Name = ?' % db_config_detail[0]['db_name'], [db_config_detail[0]['tbl_prefix'] + '_' + log_table])
+            if db_cur.rowcount > 0:
+                printLog('Table %s is already exists, skipping.' % log_table)
+                continue
+
+            q_create_tables[log_table] = ("CREATE TABLE %s_%s (`id` %sINT AUTO_INCREMENT PRIMARY KEY, deviceID INT NOT NULL, " % (db_config_detail[0]['tbl_prefix'], log_table, 'BIG' if log_table == 'hourly_log' else ''))
+            for item_field in register_conversion_fields[log_table]:
+                if item_field['item'] not in fields_created:
+                    fields_created.append(item_field['item'])
+                    table_fields.append("`" + item_field['item'] + "` %s" % data_type[item_field['data_type']])
+
+            q_create_tables[log_table] += ", ".join(table_fields) + ", LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+        
+            try:
+                db_cur.execute(q_create_tables[log_table])
+            except Exception as e:
+                printLog(e, 'error')
+            else:
+                printLog('Table %s is successfully created.' % log_table)
+
+        db_cur.close()
+        app_exit(0)
+    """ END -- Create tables if --create-tables argument is passed """
 
 current_log_timers = {}
 for mb_config_item in mb_config_detail:
@@ -803,23 +851,16 @@ while isRunning:
             # print(current_log_items)
             # print(list(dict.fromkeys(current_log_items['slaveIDs'])))
             # sys.exit(0)
-            print(all_register_items)
 
-            # sys.exit()
-            all_slave_id = []
-            for item_name, slave_id in current_log_items['slaveIDs'].items():
-                if slave_id not in all_slave_id:
-                    all_slave_id.append(slave_id)
+            for current_slave_id in all_register_items:
+                register_items = all_register_items[current_slave_id]
 
-            for current_slave_id in all_slave_id:
-                register_items = {}
-                for item_name in all_register_items:
-                    if current_log_items['slaveIDs'][item_name] == current_slave_id:
-                        register_items[item_name] = all_register_items[item_name]
+                if mb_config_item['current_log']['debug'] is True:
+                    print(register_items)
 
                 if 'current_slave_id' in vars() and len(register_items) > 0:
                     if 'current_device_id' not in vars():
-                        q_get_deviceID = "SELECT id FROM ptzbox5_devices WHERE mbmaster_name = ? AND slaveID = ? LIMIT 1"
+                        q_get_deviceID = "SELECT id FROM %s_devices WHERE mbmaster_name = ? AND slaveID = ? LIMIT 1" % db_config_detail[0]['tbl_prefix']
                         db_cur.execute(q_get_deviceID, (mb_config_item['name'], current_slave_id))
 
                         if db_cur.rowcount == 0:
@@ -828,12 +869,13 @@ while isRunning:
                         rows_device_id = db_cur.fetchone()
 
                         current_device_id = rows_device_id[0]
-                        q_get_current = "SELECT id FROM ptzbox5_current_log WHERE deviceID = ?"
+                        q_get_current = "SELECT id FROM %s_current_log WHERE deviceID = ?" % db_config_detail[0]['tbl_prefix']
                         db_cur.execute(q_get_current, (current_device_id,))
 
                         if db_cur.rowcount == 0:
                             send_current_log(current_device_id, insert_log=True)
 
+                    send_current_log(current_device_id, register_items)
                     # send_current_log(current_device_id, (dt_utc_to_current(register_items['dtu']),
                     #                                     register_items['Vb'],
                     #                                     register_items['Vm'],
@@ -856,11 +898,10 @@ while isRunning:
 
                         """ Get hourly log when EVC hour has changed """
                         if (last_dtu_str.hour != current_dtu_str.hour or archive_log_failed['hourly_log'] == True) and archive_log_enabled['hourly_log'] == True:
-                            # if send_archive_log(current_device_id, mb_config_item['hourly_log']['group_ids'], 'hourly_log')['status'] != 1:
-                            #     archive_log_failed['hourly_log'] = True
-                            # else:
-                            #     archive_log_failed['hourly_log'] = False if archive_log_failed['hourly_log'] == True else archive_log_failed['hourly_log']
-                            print('bypassed_h')
+                            if send_archive_log(current_device_id, mb_config_item['hourly_log']['group_ids'], 'hourly_log')['status'] != 1:
+                                archive_log_failed['hourly_log'] = True
+                            else:
+                                archive_log_failed['hourly_log'] = False if archive_log_failed['hourly_log'] == True else archive_log_failed['hourly_log']
 
                         """ Get daily log when EVC day has changed """
                         if (last_dtu_str.day != current_dtu_str.day or archive_log_failed['daily_log'] == True) and archive_log_enabled['daily_log'] == True:
