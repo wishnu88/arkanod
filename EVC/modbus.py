@@ -305,7 +305,7 @@ def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0, sl
         
         return {'items': all_archive_log_items, 'status': success_status}
 
-def send_current_log(deviceID: int, items: dict, insert_log = False) -> bool:
+def send_current_log(deviceID: int, items: dict = None, insert_log = False) -> bool:
     if insert_log == True:
         try:
             q_insert_current = "INSERT INTO %s_current_log (deviceID) VALUES (?)" % db_config_detail[0]['tbl_prefix']
@@ -768,58 +768,79 @@ with open('db.yaml', 'r') as db_config:
     # register_conversion_fields['current_log'] = list(dict.fromkeys(register_conversion_fields['current_log']))
     if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
         data_type = {
-            'float16': 'FLOAT',
-            'float32': 'FLOAT',
-            'float64': 'DOUBLE',
-            'int8': 'TINYINT',
-            'int16': 'SMALLINT',
-            'int32': 'INT',
-            'int64': 'BIGINT',
-            'uint8': 'TINYINT UNSIGNED',
-            'uint16': 'SMALLINT UNSIGNED',
-            'uint32': 'INT UNSIGNED',
-            'uint64': 'BIGINT UNSIGNED',
-            'string':'TEXT',
-            'dt1': 'DATETIME',
-            'dt2': 'DATETIME',
-            'bits': 'BIT(8)'
+            'float16': 'float',
+            'float32': 'float',
+            'float64': 'double',
+            'int8': 'tinyint',
+            'int16': 'smallint',
+            'int32': 'int',
+            'int64': 'bigint',
+            'uint8': 'tinyint UNSIGNED',
+            'uint16': 'smallint UNSIGNED',
+            'uint32': 'int UNSIGNED',
+            'uint64': 'bigint UNSIGNED',
+            'string':'text',
+            'dt1': 'datetime',
+            'dt2': 'datetime',
+            'bits': 'bit(8)'
         }
         fields_created = []
-        q_create_tables = {}
         table_fields = []
 
+        def check_table_exists(table_name: str) -> bool:
+            db_cur.execute('SHOW TABLE STATUS FROM %s WHERE Name = ?' % db_config_detail[0]['db_name'], [table_name])
+            if db_cur.rowcount > 0:
+                return True
+            return False
+
+        def create_table_exec(table_name: str, query: str):
+            try:
+                db_cur.execute(query)
+            except Exception as e:
+                printLog(e, 'error')
+            else:
+                printLog('Table %s is successfully created.' % table_name)
+
         oper_tables = {
-            'devices': "CREATE TABLE `%s_devices` (`id` AUTO_INCREMENT PRIMARY KEY int, `mbmaster_name` varchar(30) NOT NULL, `slaveID` tinyint NOT NULL DEFAULT 1) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4",
-            'request_log': "CREATE TABLE `%s_request_log` (`id` BIGINT AUTO_INCREMENT PRIMARY KEY, `deviceID` int NOT NULL, `archiveLog` tinyint NOT NULL, `logRetention` tinyint NOT NULL, `requestStatus` tinyint NOT NULL DEFAULT 0, `LastUpdated` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4" % db_config_detail[0]['tbl_prefix']
+            'devices': "(`id` int AUTO_INCREMENT PRIMARY KEY, `mbmaster_name` varchar(30) NOT NULL, `slaveID` tinyint NOT NULL DEFAULT 1) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4",
+            'request_log': "(`id` BIGINT AUTO_INCREMENT PRIMARY KEY, `deviceID` int NOT NULL, `archiveLog` tinyint NOT NULL, `logRetention` tinyint NOT NULL, `requestStatus` tinyint NOT NULL DEFAULT 0, `LastUpdated` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         }
 
         for oper_table in oper_tables:
-            db_cur.execute('SHOW TABLE STATUS FROM %s WHERE Name = ?' % db_config_detail[0]['db_name'], [db_config_detail[0]['tbl_prefix'] + '_' + oper_table])
-            if db_cur.rowcount > 0:
-                printLog('Table %s is already exists, skipping.' % oper_table)
+            table_name = db_config_detail[0]['tbl_prefix'] + '_' + oper_table
+            if check_table_exists(table_name):
+                printLog('Table %s is already exists, skipping.' % table_name)
                 continue
+
+            create_table_exec(table_name, "CREATE TABLE %s " % table_name + oper_tables[oper_table])
+
+            if oper_table == 'devices':
+                try:
+                    db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `unique_dev` (`mbmaster_name`,`slaveID`)' % table_name)
+                except:
+                    printLog("Failed to create index for table %s. Insufficient privilege?" % table_name, 'error')
 
         for log_table in register_conversion_fields:
-            db_cur.execute('SHOW TABLE STATUS FROM %s WHERE Name = ?' % db_config_detail[0]['db_name'], [db_config_detail[0]['tbl_prefix'] + '_' + log_table])
-            if db_cur.rowcount > 0:
-                printLog('Table %s is already exists, skipping.' % log_table)
+            table_name = db_config_detail[0]['tbl_prefix'] + '_' + log_table
+            if check_table_exists(table_name):
+                printLog('Table %s is already exists, skipping.' % table_name)
                 continue
 
-            q_create_tables[log_table] = ("CREATE TABLE %s_%s (`id` %sINT AUTO_INCREMENT PRIMARY KEY, deviceID INT NOT NULL, " % (db_config_detail[0]['tbl_prefix'], log_table, 'BIG' if log_table == 'hourly_log' else ''))
+            q_create_table = ("CREATE TABLE %s (`id` %sINT AUTO_INCREMENT PRIMARY KEY, deviceID INT NOT NULL, " % (table_name, 'BIG' if log_table == 'hourly_log' else ''))
             for item_field in register_conversion_fields[log_table]:
                 if item_field['item'] not in fields_created:
                     fields_created.append(item_field['item'])
                     table_fields.append("`" + item_field['item'] + "` %s" % data_type[item_field['data_type']])
 
-            q_create_tables[log_table] += ", ".join(table_fields) + ", LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
-        
-            try:
-                db_cur.execute(q_create_tables[log_table])
-            except Exception as e:
-                printLog(e, 'error')
-            else:
-                printLog('Table %s is successfully created.' % log_table)
+            q_create_table += ", ".join(table_fields) + ", LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+            create_table_exec(table_name, q_create_table)
 
+            if log_table != "current_log":
+                try:
+                    db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `unique_log` (`deviceID`,`%s`)' % (table_name, mb_config_check_item[log_table]['log_time_regname']))
+                except:
+                    printLog("Failed to create index for table %s. Insufficient privilege?" % table_name, 'error')
+        
         db_cur.close()
         app_exit(0)
     """ END -- Create tables if --create-tables argument is passed """
@@ -864,6 +885,7 @@ while isRunning:
                         db_cur.execute(q_get_deviceID, (mb_config_item['name'], current_slave_id))
 
                         if db_cur.rowcount == 0:
+                            db_cur.execute("INSERT INTO %s_devices (`mbmaster_name`, `slaveID`) VALUES (?, ?)" % db_config_detail[0]['tbl_prefix'], (mb_config_item['name'], current_slave_id))
                             continue
 
                         rows_device_id = db_cur.fetchone()
@@ -876,21 +898,6 @@ while isRunning:
                             send_current_log(current_device_id, insert_log=True)
 
                     send_current_log(current_device_id, register_items)
-                    # send_current_log(current_device_id, (dt_utc_to_current(register_items['dtu']),
-                    #                                     register_items['Vb'],
-                    #                                     register_items['Vm'],
-                    #                                     register_items['p1'],
-                    #                                     register_items['t'],
-                    #                                     register_items['Qm'],
-                    #                                     register_items['Qb'],
-                    #                                     register_items['EPwrSActive'],
-                    #                                     register_items['EPwrSCheck'],
-                    #                                     register_items['ETL'],
-                    #                                     register_items['BattLvl']))
-
-                    # print(mb_config_item['current_log'])
-                    # print('test')
-                    # sys.exit()
 
                     if evctime_reg['name'] in register_items:
                         last_dtu_str = dt_utc_to_current(last_dtu, evctime_reg['data_type'])

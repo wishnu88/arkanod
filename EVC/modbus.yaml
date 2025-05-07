@@ -32,16 +32,19 @@
     group_ids:
     - 1
   hourly_log:
+    log_time_regname: ArchiveTime
     debug: true
     max_retention: 108
     group_ids:
     - 2
   daily_log:
+    log_time_regname: ArchiveTime
     debug: true
     max_retention: 30
     group_ids:
     - 3
   monthly_log:
+    log_time_regname: ArchiveTime
     max_retention: 12
     group_ids:
     - 4
