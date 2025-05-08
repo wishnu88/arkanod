@@ -33,13 +33,13 @@
     - 1
   hourly_log:
     log_time_regname: ArchiveTime
-    debug: true
+    # debug: true
     max_retention: 108
     group_ids:
     - 2
   daily_log:
     log_time_regname: ArchiveTime
-    debug: true
+    # debug: true
     max_retention: 30
     group_ids:
     - 3

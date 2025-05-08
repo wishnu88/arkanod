@@ -320,7 +320,7 @@ def send_current_log(deviceID: int, items: dict = None, insert_log = False) -> b
             for item_name in items:
                 q_update_items.append("%s = %%(%s)s" % (item_name, item_name))
             q_update_current_log += ", ".join(q_update_items) + " WHERE deviceID = %s" % deviceID
-            print(q_update_current_log)
+
             # q_update_current = "UPDATE %s_current_log SET dtu = ?, Vb = ?, Vm = ?, p1 = ?, t = ?, Qm = ?, Qb = ?, EPwrSActive = ?, EPwrSCheck = ?, ETL = ?, BattLvl = ? WHERE deviceID = ?" % db_config_detail[0]['tbl_prefix']
             # return True
             db_cur.execute(q_update_current_log, items)
@@ -383,16 +383,6 @@ def register_conversion_paramcheck(param_name: str, conversion_item_index: int):
                     printLog('[Item %s - register_conversion - Conversion Item %s] Unable to find group_ids: %s in any register_group.' % (item_index, conversion_item_index, curr_group_id), 'error')
                     error_len = error_len + 1
 
-            # for current_register_group in mb_config_check_item['register_group']:
-            #     exists_count = 0
-            #     for curr_group_id in register_conversion_item[param_name]:
-            #         if curr_group_id == current_register_group['group_id']:
-            #             exists_count = exists_count + 1
-
-            #     if exists_count == 0:
-            #         printLog('[Item %s - register_conversion - Conversion Item %s] Unable to find group_ids: %s in any register_group.' % (item_index, conversion_item_index, curr_group_id), 'error')
-            #         error_len = error_len + 1
-            #         sys.exit(0)
         elif param_name == 'registers':
             if isinstance(register_conversion_item[param_name], list) == False:
                 printLog('[Item %s - register_conversion - Group Item %s] Invalid %s settings for conversion name: %s. It should be a list [start_reg_addr, end_reg_addr].' % (item_index, conversion_item_index, param_name, register_conversion_item['name']), 'error')
@@ -690,7 +680,6 @@ with open('modbus.yaml', 'r') as mb_config:
                                     register_conversion_fields['monthly_log'].append({
                                         'item': register_conversion_item['name'],
                                         'data_type': register_conversion_item['data_type']})
-
                 else:
                     printLog('[Item %s] Invalid register_conversion settings (register_conversion: ). It should be a list.' % item_index, 'error')
                     error_len = error_len + 1
@@ -765,7 +754,6 @@ with open('db.yaml', 'r') as db_config:
         app_exit(1)
 
     """ START -- Create tables if --create-tables argument is passed """
-    # register_conversion_fields['current_log'] = list(dict.fromkeys(register_conversion_fields['current_log']))
     if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
         data_type = {
             'float16': 'float',
@@ -784,8 +772,6 @@ with open('db.yaml', 'r') as db_config:
             'dt2': 'datetime',
             'bits': 'bit(8)'
         }
-        fields_created = []
-        table_fields = []
 
         def check_table_exists(table_name: str) -> bool:
             db_cur.execute('SHOW TABLE STATUS FROM %s WHERE Name = ?' % db_config_detail[0]['db_name'], [table_name])
@@ -802,7 +788,7 @@ with open('db.yaml', 'r') as db_config:
                 printLog('Table %s is successfully created.' % table_name)
 
         oper_tables = {
-            'devices': "(`id` int AUTO_INCREMENT PRIMARY KEY, `mbmaster_name` varchar(30) NOT NULL, `slaveID` tinyint NOT NULL DEFAULT 1) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4",
+            'devices': "(`id` int AUTO_INCREMENT PRIMARY KEY, `mbmaster_name` varchar(30) NOT NULL, `slaveID` tinyint NOT NULL DEFAULT 1, DeviceCreated DATETIME DEFAULT current_timestamp(), LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP()) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4",
             'request_log': "(`id` BIGINT AUTO_INCREMENT PRIMARY KEY, `deviceID` int NOT NULL, `archiveLog` tinyint NOT NULL, `logRetention` tinyint NOT NULL, `requestStatus` tinyint NOT NULL DEFAULT 0, `LastUpdated` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
         }
 
@@ -822,6 +808,8 @@ with open('db.yaml', 'r') as db_config:
 
         for log_table in register_conversion_fields:
             table_name = db_config_detail[0]['tbl_prefix'] + '_' + log_table
+            fields_created = []
+            table_fields = []
             if check_table_exists(table_name):
                 printLog('Table %s is already exists, skipping.' % table_name)
                 continue
@@ -925,7 +913,7 @@ while isRunning:
                                 archive_log_failed['monthly_log'] = False if archive_log_failed['monthly_log'] == True else archive_log_failed['monthly_log']
 
                         """ START - Check Request Log """
-                        q_check_request_log = 'SELECT id, archiveLog, logRetention FROM ptzbox5_request_log WHERE deviceID = ? AND requestStatus = 0 AND archiveLog >= 0 AND archiveLog < ?'
+                        q_check_request_log = "SELECT id, archiveLog, logRetention FROM %s_request_log WHERE deviceID = ? AND requestStatus = 0 AND archiveLog >= 0 AND archiveLog < ?" % db_config_detail[0]['tbl_prefix']
                         db_cur.execute(q_check_request_log, (current_device_id, len(archive_log_list)))
 
                         if db_cur.rowcount > 0:
@@ -939,7 +927,7 @@ while isRunning:
                                 else:
                                     q_request_log_status = 2
 
-                                q_update_request_log = 'UPDATE ptzbox5_request_log SET requestStatus = ? WHERE id = ?'
+                                q_update_request_log = "UPDATE %s_request_log SET requestStatus = ? WHERE id = ?" % db_config_detail[0]['tbl_prefix']
                                 db_cur.execute(q_update_request_log, (q_request_log_status, row_request_log[0]))
                         """ END - Check Request Log """
 
