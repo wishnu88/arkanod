@@ -1,0 +1,609 @@
+- type: rtuovertcp
+  host: 192.168.30.200
+  port: 26
+  name: mb_kat_tis2
+  timeout_seconds: 5
+  wait_milliseconds: 50
+  register_group:
+  - group_id: 1
+    slave: 1
+    address: 0
+    count: 68
+    type: holding
+  - group_id: 2
+    slave: 1
+    address: 200
+    count: 65
+    type: holding
+  - group_id: 3
+    slave: 1
+    address: 7700
+    count: 53
+    type: holding
+  - group_id: 4
+    slave: 1
+    address: 9500
+    count: 25
+    type: holding
+  current_log:
+    scan_interval_ms: 30000
+    evc_time_regname: EVCTime
+    # debug: true
+    group_ids:
+    - 1
+  hourly_log:
+    log_time_regname: ArchiveTime
+    # debug: true
+    max_retention: 108
+    group_ids:
+    - 2
+  daily_log:
+    log_time_regname: ArchiveTime
+    # debug: true
+    max_retention: 30
+    group_ids:
+    - 3
+  monthly_log:
+    log_time_regname: ArchiveTime
+    max_retention: 12
+    group_ids:
+    - 4
+  register_conversion:
+  - name: EVCTime
+    group_ids:
+    - 1
+    registers: [0, 2]
+    data_type: dt2
+    swap: none
+  - name: Vb
+    group_ids:
+    - 1
+    registers: [3, 6]
+    data_type: float64
+    swap: word_byte
+  - name: Vm
+    group_ids:
+    - 1
+    registers: [7, 10]
+    data_type: float64
+    swap: word_byte
+  - name: E
+    group_ids:
+    - 1
+    registers: [11, 14]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: Vbs
+    group_ids:
+    - 1
+    registers: [15, 18]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: Vs
+    group_ids:
+    - 1
+    registers: [19, 22]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: Es
+    group_ids:
+    - 1
+    registers: [23, 26]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: Vbdh
+    group_ids:
+    - 1
+    registers: [27, 28]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Vbdd
+    group_ids:
+    - 1
+    registers: [29, 30]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Vmdh
+    group_ids:
+    - 1
+    registers: [31, 32]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Vmdd
+    group_ids:
+    - 1
+    registers: [33, 34]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: p
+    group_ids:
+    - 1
+    registers: [35, 36]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: t
+    group_ids:
+    - 1
+    registers: [37, 38]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: C
+    group_ids:
+    - 1
+    registers: [39, 40]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: K
+    group_ids:
+    - 1
+    registers: [41, 42]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Z
+    group_ids:
+    - 1
+    registers: [43, 44]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Zb
+    group_ids:
+    - 1
+    registers: [45, 46]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: t_int
+    group_ids:
+    - 1
+    registers: [47, 48]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: BV
+    group_ids:
+    - 1
+    registers: [49, 50]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: BC
+    group_ids:
+    - 1
+    registers: [51, 52]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: p_bar
+    group_ids:
+    - 1
+    registers: [53, 54]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: p_rel
+    group_ids:
+    - 1
+    registers: [55, 56]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Q
+    group_ids:
+    - 1
+    registers: [57, 58]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Qb
+    group_ids:
+    - 1
+    registers: [59, 60]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Cover
+    group_ids:
+    - 1
+    registers: [61, 61]
+    data_type: uint8
+    swap: word_byte
+    # precision: 3
+  - name: EXTPWR
+    group_ids:
+    - 1
+    registers: [62, 62]
+    data_type: uint8
+    swap: word_byte
+    # precision: 3
+  - name: Standard_Compressibility
+    group_ids:
+    - 1
+    registers: [63, 64]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: SlaveID
+    group_ids:
+    - 1
+    registers: [65, 65]
+    data_type: uint16
+    swap: word_byte
+    # precision: 3
+  - name: SN
+    group_ids:
+    - 1
+    registers: [66, 67]
+    data_type: uint32
+    swap: word_byte
+    # precision: 3
+  - name: Vb
+    group_ids:
+    - 2
+    registers: [200, 203]
+    data_type: float64
+    swap: word_byte
+  - name: Vm
+    group_ids:
+    - 2
+    registers: [204, 207]
+    data_type: float64
+    swap: word_byte
+  - name: E
+    group_ids:
+    - 2
+    registers: [208, 211]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: p
+    group_ids:
+    - 2
+    registers: [212, 213]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: t
+    group_ids:
+    - 2
+    registers: [214, 215]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: C
+    group_ids:
+    - 2
+    registers: [216, 217]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: K
+    group_ids:
+    - 2
+    registers: [218, 219]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Z
+    group_ids:
+    - 2
+    registers: [220, 221]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Zb
+    group_ids:
+    - 2
+    registers: [222, 223]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Vbs
+    group_ids:
+    - 2
+    registers: [224, 227]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: Vs
+    group_ids:
+    - 2
+    registers: [228, 231]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: Es
+    group_ids:
+    - 2
+    registers: [232, 235]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: Vbdh
+    group_ids:
+    - 2
+    registers: [236, 237]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Vmdh
+    group_ids:
+    - 2
+    registers: [238, 239]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: t_int
+    group_ids:
+    - 2
+    registers: [240, 241]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: BV
+    group_ids:
+    - 2
+    registers: [242, 243]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: BC
+    group_ids:
+    - 2
+    registers: [244, 245]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: p_bar
+    group_ids:
+    - 2
+    registers: [246, 247]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: p_rel
+    group_ids:
+    - 2
+    registers: [248, 249]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Q
+    group_ids:
+    - 2
+    registers: [250, 251]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Qb
+    group_ids:
+    - 2
+    registers: [252, 253]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Hs
+    group_ids:
+    - 2
+    registers: [254, 255]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: St01
+    group_ids:
+    - 2
+    registers: [256, 259]
+    data_type: uint64
+    swap: word_byte
+    # precision: 3
+  - name: Cover
+    group_ids:
+    - 2
+    registers: [260, 260]
+    data_type: uint8
+    swap: word_byte
+    # precision: 3
+  - name: EXTPWR
+    group_ids:
+    - 2
+    registers: [261, 261]
+    data_type: uint8
+    swap: word_byte
+    # precision: 3
+  - name: ArchiveTime
+    group_ids:
+    - 2
+    registers: [262, 264]
+    data_type: dt2
+    swap: none
+    # precision: 3
+  - name: Vb
+    group_ids:
+    - 3
+    registers: [7700, 7703]
+    data_type: float64
+    swap: word_byte
+  - name: Vm
+    group_ids:
+    - 3
+    registers: [7704, 7707]
+    data_type: float64
+    swap: word_byte
+  - name: E
+    group_ids:
+    - 3
+    registers: [7708, 7711]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: p
+    group_ids:
+    - 3
+    registers: [7712, 7713]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: t
+    group_ids:
+    - 3
+    registers: [7714, 7715]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Vbs
+    group_ids:
+    - 3
+    registers: [7716, 7719]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: Vs
+    group_ids:
+    - 3
+    registers: [7720, 7723]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: Es
+    group_ids:
+    - 3
+    registers: [7724, 7727]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: Vbdd
+    group_ids:
+    - 3
+    registers: [7728, 7729]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Vmdd
+    group_ids:
+    - 3
+    registers: [7730, 7731]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: t_int
+    group_ids:
+    - 3
+    registers: [7732, 7733]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: BV
+    group_ids:
+    - 3
+    registers: [7734, 7735]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: BC
+    group_ids:
+    - 3
+    registers: [7736, 7737]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: p_bar
+    group_ids:
+    - 3
+    registers: [7738, 7739]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: p_rel
+    group_ids:
+    - 3
+    registers: [7740, 7741]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Q
+    group_ids:
+    - 3
+    registers: [7742, 7743]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: Hs
+    group_ids:
+    - 3
+    registers: [7744, 7745]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: St01
+    group_ids:
+    - 3
+    registers: [7746, 7749]
+    data_type: uint64
+    swap: word_byte
+    # precision: 3
+  - name: ArchiveTime
+    group_ids:
+    - 3
+    registers: [7750, 7752]
+    data_type: dt2
+    swap: none
+    # precision: 3
+  - name: Vb
+    group_ids:
+    - 4
+    registers: [9500, 9503]
+    data_type: float64
+    swap: word_byte
+  - name: Vm
+    group_ids:
+    - 4
+    registers: [9504, 9507]
+    data_type: float64
+    swap: word_byte
+  - name: Vbs
+    group_ids:
+    - 4
+    registers: [9508, 9511]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: Vs
+    group_ids:
+    - 4
+    registers: [9512, 9515]
+    data_type: float64
+    swap: word_byte
+    # precision: 3
+  - name: BC
+    group_ids:
+    - 4
+    registers: [9516, 9517]
+    data_type: float32
+    swap: word_byte
+    # precision: 3
+  - name: St01
+    group_ids:
+    - 4
+    registers: [9518, 9521]
+    data_type: uint64
+    swap: word_byte
+    # precision: 3
+  - name: ArchiveTime
+    group_ids:
+    - 4
+    registers: [9522, 9524]
+    data_type: dt2
+    swap: none
+    # precision: 3
