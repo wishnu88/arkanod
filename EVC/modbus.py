@@ -439,7 +439,6 @@ if 'mb_config_check_all' in vars():
     # for mb_config_check in mb_config_check_all:
     for item_index, mb_config_check_item in enumerate(mb_config_check_all):
         """ START - Sanity check for type, port and host settings """
-        print(mb_config_check_item)
         if 'type' in mb_config_check_item:
             if mb_config_check_item['type'] == 'rtu':
                 if 'port' not in mb_config_check_item:
@@ -577,7 +576,6 @@ if 'mb_config_check_all' in vars():
         """ END - Sanity check for current_log settings """
 
         """ START - Sanity check for hourly_log, daily_log, monthly_log settings """
-        print(archive_log_list)
         for current_archive_log in archive_log_list:
             if current_archive_log in mb_config_check_item:
 
