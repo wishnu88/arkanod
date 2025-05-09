@@ -96,8 +96,8 @@ def app_exit(exitVal: int = 0):
     if len(client) > 0:
         printLog("Disconnecting from Modbus devices...")
         for client_conn in client:
-            if client_conn.connected == True:
-                client_conn.close()
+            if client[client_conn].connected == True:
+                client[client_conn].close()
 
     if 'db_conn' in globals():
         printLog("Closing MariaDB database...")
@@ -165,10 +165,10 @@ def mb_connect(type, port: str, host: str = None, mb_timeout: int = None):
             printLog("Connecting to %s port %s..." % (host, port))
             if 'ModbusTcpClient' not in sys.modules:
                 from pymodbus.client import ModbusTcpClient
-            client[client_index] = ModbusTcpClient(host=host, port=int(port), framer=ModbusRtuFramer if type == 'rtu' or type == 'rtuovertcp' else ModbusSocketFramer if type == 'tcp' else ModbusAsciiFramer, timeout=mb_timeout)
-            client[client_index].connect()
+            client = ModbusTcpClient(host=host, port=int(port), framer=ModbusRtuFramer if type == 'rtu' or type == 'rtuovertcp' else ModbusSocketFramer if type == 'tcp' else ModbusAsciiFramer, timeout=mb_timeout)
+            client.connect()
             printLog("Connected succesfully to %s port %s!" % (host, port))
-            return client[client_index]
+            return client
         except:
             printLog('Unable to establish connection to %s port %s.' % (host, port), 'error')
     elif type == 'rtu':        
@@ -176,10 +176,10 @@ def mb_connect(type, port: str, host: str = None, mb_timeout: int = None):
             printLog("Connecting to port %s..." % port)
             if 'ModbusSerialClient' not in sys.modules:
                 from pymodbus.client import ModbusSerialClient
-            client[client_index] = ModbusSerialClient(port=port, framer=ModbusRtuFramer if type == 'rtu' or type == 'rtuovertcp' else ModbusSocketFramer if type == 'tcp' else ModbusAsciiFramer, timeout=mb_timeout)
-            client[client_index].connect()
+            client = ModbusSerialClient(port=port, framer=ModbusRtuFramer if type == 'rtu' or type == 'rtuovertcp' else ModbusSocketFramer if type == 'tcp' else ModbusAsciiFramer, timeout=mb_timeout)
+            client.connect()
             printLog("Connected succesfully to %s port %s!" % (host, port))
-            return client[client_index]
+            return client
         except:
             printLog('Unable to establish connection to %s port %s.' % (host, port), 'error')
 
@@ -215,9 +215,9 @@ def get_evc_log(register_groups, slaveID = None) -> dict:
         sleep((mb_config_item['wait_milliseconds'] / 1000))
         try:
             if register_group['type'] == "input":
-                result = client[client_index].read_input_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
+                result = client[mb_config_item['name']].read_input_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
             elif register_group['type'] == "holding":
-                result = client[client_index].read_holding_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
+                result = client[mb_config_item['name']].read_holding_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
         except:
             printLog('Unable to poll Modbus device on %s port %s with slave ID %s. Moving on...' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port'], register_group['slave']), 'error')
             sleep(mb_config_item['timeout_seconds'])
@@ -226,9 +226,9 @@ def get_evc_log(register_groups, slaveID = None) -> dict:
         if hasattr(result, 'registers') == False:
             printLog('Unexpected response from Modbus device on %s port %s with slave ID %s.' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port'], register_group['slave']), 'error')
             sleep(mb_config_item['timeout_seconds'])
-            if client[client_index].connected == False:
+            if client[mb_config_item['name']].connected == False:
                 printLog('Disconnected from %s port %s.' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port']), 'error')
-                client[client_index] = mb_connect(mb_config_item['type'], host=mb_config_item['host'], port=mb_config_item['port'], mb_timeout=mb_config_item['timeout_seconds'])
+                client[mb_config_item['name']] = mb_connect(mb_config_item['type'], host=mb_config_item['host'], port=mb_config_item['port'], mb_timeout=mb_config_item['timeout_seconds'])
                 current_log_timers[mb_config_item['name']] = 0
             break
         
@@ -850,35 +850,31 @@ current_log_timers = {}
 for mb_config_item in mb_config_detail:
     current_log_timers[mb_config_item['name']] = 0
 
-client = []
-client_index = 0
+client = {}
+current_device_id = {}
+last_dtu = {}
+
 while isRunning:
     for mb_config_item in mb_config_detail:
-        print("%s < %s" % (client_index, len(client)))
-        if client_index < len(client):
-            pass
-        else:
-            print('test aja')
-        # if 'client' not in vars() or ('client' in vars() and hasattr(client, 'connected') and client.connected == False):
-            if 0 <= client_index < len(client):
+        if mb_config_item['name'] not in client or (mb_config_item['name'] in client and hasattr(client[mb_config_item['name']], 'connected') and client[mb_config_item['name']].connected == False):
+
+            if mb_config_item['name'] in client:
                 printLog('Disconnected from %s port %s.' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port']), 'error')
-            client[client_index] = mb_connect(mb_config_item['type'], host=mb_config_item['host'], port=mb_config_item['port'], mb_timeout=mb_config_item['timeout_seconds'])
-        print(client)
-        if round(millis()*1000) - current_log_timers[mb_config_item['name']] >= int(mb_config_item['current_log']['scan_interval_ms']) and client[client_index].connected == True and isRunning == True:
+            
+            client[mb_config_item['name']] = mb_connect(mb_config_item['type'], host=mb_config_item['host'], port=mb_config_item['port'], mb_timeout=mb_config_item['timeout_seconds'])
+
+        if round(millis()*1000) - current_log_timers[mb_config_item['name']] >= int(mb_config_item['current_log']['scan_interval_ms']) and client[mb_config_item['name']].connected == True and isRunning == True:
 
             """ Reset timer, waiting for the next cycle """
             current_log_timers[mb_config_item['name']] = round(millis()*1000)
 
-            if 'last_dtu' not in vars():
-                last_dtu = 0
+            if mb_config_item['name'] not in last_dtu:
+                last_dtu[mb_config_item['name']] = 0
 
             current_log_group_ids = get_log_group_ids(mb_config_item['current_log']['group_ids'])
             current_log_items = get_evc_log(current_log_group_ids)
 
             all_register_items = current_log_items['items']
-            # print(current_log_items)
-            # print(list(dict.fromkeys(current_log_items['slaveIDs'])))
-            # sys.exit(0)
 
             for current_slave_id in all_register_items:
                 register_items = all_register_items[current_slave_id]
@@ -886,8 +882,8 @@ while isRunning:
                 if mb_config_item['current_log']['debug'] is True:
                     print(register_items)
 
-                if 'current_slave_id' in vars() and len(register_items) > 0:
-                    if 'current_device_id' not in vars():
+                if len(register_items) > 0:
+                    if mb_config_item['name'] not in current_device_id:
                         q_get_deviceID = "SELECT id FROM %s_devices WHERE mbmaster_name = ? AND slaveID = ? LIMIT 1" % db_config_detail[0]['tbl_prefix']
                         db_cur.execute(q_get_deviceID, (mb_config_item['name'], current_slave_id))
 
@@ -897,49 +893,49 @@ while isRunning:
 
                         rows_device_id = db_cur.fetchone()
 
-                        current_device_id = rows_device_id[0]
+                        current_device_id[mb_config_item['name']] = rows_device_id[0]
                         q_get_current = "SELECT id FROM %s_current_log WHERE deviceID = ?" % db_config_detail[0]['tbl_prefix']
-                        db_cur.execute(q_get_current, (current_device_id,))
+                        db_cur.execute(q_get_current, (current_device_id[mb_config_item['name']],))
 
                         if db_cur.rowcount == 0:
-                            send_current_log(current_device_id, insert_log=True)
+                            send_current_log(current_device_id[mb_config_item['name']], insert_log=True)
 
-                    send_current_log(current_device_id, register_items)
+                    send_current_log(current_device_id[mb_config_item['name']], register_items)
 
                     if evctime_reg['name'] in register_items:
-                        last_dtu_str = dt_utc_to_current(last_dtu, evctime_reg['data_type'])
+                        last_dtu_str = dt_utc_to_current(last_dtu[mb_config_item['name']], evctime_reg['data_type'])
                         current_dtu_str = dt_utc_to_current(register_items[evctime_reg['name']], evctime_reg['data_type'])
 
                         """ Get hourly log when EVC hour has changed """
                         if (last_dtu_str.hour != current_dtu_str.hour or archive_log_failed['hourly_log'] == True) and archive_log_enabled['hourly_log'] == True:
-                            if send_archive_log(current_device_id, mb_config_item['hourly_log']['group_ids'], 'hourly_log')['status'] != 1:
+                            if send_archive_log(current_device_id[mb_config_item['name']], mb_config_item['hourly_log']['group_ids'], 'hourly_log')['status'] != 1:
                                 archive_log_failed['hourly_log'] = True
                             else:
                                 archive_log_failed['hourly_log'] = False if archive_log_failed['hourly_log'] == True else archive_log_failed['hourly_log']
 
                         """ Get daily log when EVC day has changed """
                         if (last_dtu_str.day != current_dtu_str.day or archive_log_failed['daily_log'] == True) and archive_log_enabled['daily_log'] == True:
-                            if send_archive_log(current_device_id, mb_config_item['daily_log']['group_ids'], 'daily_log')['status'] != 1:
+                            if send_archive_log(current_device_id[mb_config_item['name']], mb_config_item['daily_log']['group_ids'], 'daily_log')['status'] != 1:
                                 archive_log_failed['daily_log'] = True
                             else:
                                 archive_log_failed['daily_log'] = False if archive_log_failed['daily_log'] == True else archive_log_failed['daily_log']
 
                         """ Get monthly log when EVC month has changed """
                         if (last_dtu_str.month != current_dtu_str.month or archive_log_failed['monthly_log'] == True) and archive_log_enabled['monthly_log'] == True:
-                            if send_archive_log(current_device_id, mb_config_item['monthly_log']['group_ids'], 'monthly_log')['status'] != 1:
+                            if send_archive_log(current_device_id[mb_config_item['name']], mb_config_item['monthly_log']['group_ids'], 'monthly_log')['status'] != 1:
                                 archive_log_failed['monthly_log'] = True
                             else:
                                 archive_log_failed['monthly_log'] = False if archive_log_failed['monthly_log'] == True else archive_log_failed['monthly_log']
 
                         """ START - Check Request Log """
                         q_check_request_log = "SELECT id, archiveLog, logRetention FROM %s_request_log WHERE deviceID = ? AND requestStatus = 0 AND archiveLog >= 0 AND archiveLog < ?" % db_config_detail[0]['tbl_prefix']
-                        db_cur.execute(q_check_request_log, (current_device_id, len(archive_log_list)))
+                        db_cur.execute(q_check_request_log, (current_device_id[mb_config_item['name']], len(archive_log_list)))
 
                         if db_cur.rowcount > 0:
                             rows_request_log = db_cur.fetchall()
                             for row_request_log in rows_request_log:
                                 if row_request_log[2] <= mb_config_item[archive_log_list[row_request_log[1]]]['max_retention'] and archive_log_enabled[archive_log_list[row_request_log[1]]] == True:
-                                    if len(send_archive_log(current_device_id, mb_config_item[archive_log_list[row_request_log[1]]]['group_ids'], archive_log_list[row_request_log[1]], row_request_log[2])['items']) > 0:
+                                    if len(send_archive_log(current_device_id[mb_config_item['name']], mb_config_item[archive_log_list[row_request_log[1]]]['group_ids'], archive_log_list[row_request_log[1]], row_request_log[2])['items']) > 0:
                                         q_request_log_status = 1
                                     else:
                                         q_request_log_status = 2
@@ -950,8 +946,7 @@ while isRunning:
                                 db_cur.execute(q_update_request_log, (q_request_log_status, row_request_log[0]))
                         """ END - Check Request Log """
 
-                        last_dtu = register_items[evctime_reg['name']]
-        client_index += 1
+                        last_dtu[mb_config_item['name']] = register_items[evctime_reg['name']]
     try:
         sleep(0.1)
     except KeyboardInterrupt:

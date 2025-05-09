@@ -1,4 +1,4 @@
-- db_instance: ptzbox
+- db_instance: corusevo
   db_driver: mariadb
   db_host: 172.18.81.14
   # db_port: 
