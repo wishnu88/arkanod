@@ -4,5 +4,5 @@
   # db_port: 
   db_username: arkanodtest
   db_password: "210924"
-  db_name: decorus
+  db_name: corusevo
   tbl_prefix: corusevo
