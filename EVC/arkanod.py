@@ -99,7 +99,7 @@ def db_close():
 def modbus_close():
     global client
 
-    if 'client' in globals() and isinstance(client) and len(client) > 0:
+    if 'client' in globals() and isinstance(client, object) and len(client) > 0:
         printLog("Disconnecting from Modbus devices...")
         for client_conn in client:
             if client[client_conn].connected == True:
