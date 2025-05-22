@@ -3,6 +3,7 @@
 import yaml
 import mariadb
 import sys
+import os
 import logging
 from signal import (signal as os_signal, SIGTERM, SIGINT, SIGHUP)
 from pymodbus.constants import Endian
@@ -10,6 +11,23 @@ from pymodbus.payload import BinaryPayloadDecoder
 from pymodbus.transaction import (ModbusRtuFramer, ModbusAsciiFramer, ModbusSocketFramer)
 from time import (sleep, time as millis)
 from datetime import (datetime, timezone, timedelta)
+
+class Loader(yaml.SafeLoader):
+
+    def __init__(self, stream):
+
+        self._root = os.path.split(stream.name)[0]
+
+        super(Loader, self).__init__(stream)
+
+    def include(self, node):
+
+        filename = os.path.join(self._root, self.construct_scalar(node))
+
+        with open(filename, 'r') as f:
+            return yaml.load(f, Loader)
+
+Loader.add_constructor('!include', Loader.include)
 
 modbus_type_list = [
     'rtuovertcp',
@@ -68,10 +86,43 @@ archive_log_failed = {
     'monthly_log': False,
 }
 
+TRIGGER_REQ_DATALOG = """
+CREATE TRIGGER `REQ_DATALOG` AFTER UPDATE ON `%s` FOR EACH ROW BEGIN
+    DECLARE xDate_Start INT unsigned;
+    DECLARE xDate_End INT unsigned;
+    DECLARE devID INT unsigned;
+    DECLARE hourly_retention INT unsigned;
+    DECLARE daily_retention INT unsigned;
+    
+    SET devID=new.deviceID;
+
+    SELECT UNIX_TIMESTAMP(Date_Start), UNIX_TIMESTAMP(Date_End) INTO xDate_Start, xDate_End FROM %s_update_check WHERE deviceID = devID;
+
+    SET hourly_retention=FLOOR((xDate_End - xDate_Start) / 3600);
+
+    IF hourly_retention > 0 THEN
+        INSERT INTO %s_request_log (deviceID, archiveLog, logRetention) VALUES (devID, 0, hourly_retention);
+    END IF;
+
+    IF hourly_retention > 48 THEN
+        SET daily_retention=FLOOR((xDate_End - xDate_Start) / 86400);
+        INSERT INTO %s_request_log (deviceID, archiveLog, logRetention) VALUES (devID, 1, daily_retention);
+    END IF;
+END"""
+
+EVENT_NOT_UPDATE_CHECK = """
+CREATE EVENT IF NOT EXISTS `NOT_UPDATE_CHECK` ON SCHEDULE EVERY 1 HOUR STARTS '2021-12-25 00:00:00' ON COMPLETION NOT PRESERVE ENABLE DO BEGIN
+    DELETE FROM `%s_update_check` WHERE Date_End IS NOT NULL;
+    INSERT INTO %s_update_check (`deviceID`,`Date_Start`) SELECT deviceID, LastUpdated FROM %s_current_log WHERE (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(LastUpdated)) > 3600 AND deviceID NOT IN (SELECT deviceID FROM %s_update_check);
+END """
+
 group_id_list = {}
 
 if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
     register_conversion_fields = {archive_log: [] for archive_log in archive_log_list}
+else:
+    del TRIGGER_REQ_DATALOG
+    del EVENT_NOT_UPDATE_CHECK
 
 isRunning = True
 
@@ -449,7 +500,7 @@ while isRunning:
     for slave_config in glob('slaves/*.modbus.yaml'):
         with open(slave_config, 'r') as mb_config:
             printLog('Loading Modbus devices settings from %s...' % slave_config)
-            mb_config_detail += yaml.safe_load(mb_config)
+            mb_config_detail += yaml.load(mb_config, Loader)
 
     mb_config_check_all = mb_config_detail
 
@@ -811,19 +862,25 @@ while isRunning:
                 return False
 
             def create_table_exec(table_name: str, query: str):
+                global table_errors
+
                 try:
                     db_cur.execute(query)
                 except Exception as e:
                     printLog(e, 'error')
+                    table_errors += 1
                 else:
                     printLog('Table %s is successfully created.' % table_name)
 
             oper_tables = {
                 'devices': "(`id` int AUTO_INCREMENT PRIMARY KEY, `mbmaster_name` varchar(30) NOT NULL, `slaveID` tinyint NOT NULL DEFAULT 1, DeviceCreated DATETIME DEFAULT current_timestamp(), LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP()) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4",
-                'request_log': "(`id` BIGINT AUTO_INCREMENT PRIMARY KEY, `deviceID` int NOT NULL, `archiveLog` tinyint NOT NULL, `logRetention` smallint NOT NULL, `requestStatus` tinyint NOT NULL DEFAULT 0, `RequestCreated` datetime NOT NULL DEFAULT current_timestamp(), `LastUpdated` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+                'request_log': "(`id` BIGINT AUTO_INCREMENT PRIMARY KEY, `deviceID` int NOT NULL, `archiveLog` tinyint NOT NULL, `logRetention` smallint NOT NULL, `requestStatus` tinyint NOT NULL DEFAULT 0, `RequestCreated` datetime NOT NULL DEFAULT current_timestamp(), `LastUpdated` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4",
+                'update_check': "(`id` INT AUTO_INCREMENT PRIMARY KEY, `deviceID` int NOT NULL, `Date_Start` datetime NOT NULL, `Date_End` datetime DEFAULT NULL) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4"
             }
 
+            table_errors = 0
             for oper_table in oper_tables:
+                index_failed = 0
                 table_name = db_config_detail[0]['tbl_prefix'] + '_' + oper_table
                 if check_table_exists(table_name):
                     printLog('Table %s is already exists, skipping.' % table_name)
@@ -836,8 +893,27 @@ while isRunning:
                         db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `unique_dev` (`mbmaster_name`,`slaveID`)' % table_name)
                     except:
                         printLog("Failed to create index for table %s. Insufficient privilege?" % table_name, 'error')
+                        index_failed += 1
+                elif oper_table == 'update_check':
+                    try:
+                        db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `deviceID` (`deviceID`)' % table_name)
+                    except:
+                        printLog("Failed to create index for table %s. Insufficient privilege?" % table_name, 'error')
+                        index_failed += 1
+                    else:
+                        try:
+                            db_cur.execute(TRIGGER_REQ_DATALOG % (table_name, db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
+                        except mariadb.Error as e:
+                            printLog("Failed to create trigger for table %s: %s" % (table_name, e), 'error')
+                            index_failed += 1
+                
+                if index_failed > 0:
+                    db_cur.execute('DROP TABLE %s' % table_name)
+                    printLog("Rolling back create table %s." % table_name, 'error')
+                    table_errors += 1
 
             for log_table in register_conversion_fields:
+                index_failed = 0
                 table_name = db_config_detail[0]['tbl_prefix'] + '_' + log_table
                 fields_created = []
                 table_fields = []
@@ -850,8 +926,7 @@ while isRunning:
                     if item_field['item'] not in fields_created:
                         fields_created.append(item_field['item'])
                         table_fields.append("`" + item_field['item'] + "` %s" % data_type[item_field['data_type']])
-
-                q_create_table += ", ".join(table_fields) + ", LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP()) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+                q_create_table += ", ".join(table_fields) + ", LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP()) ENGINE=" + ("InnoDB" if log_table != "current_log" else "MyISAM") + " DEFAULT CHARSET=utf8mb4"
                 create_table_exec(table_name, q_create_table)
 
                 if log_table != "current_log":
@@ -859,8 +934,29 @@ while isRunning:
                         db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `unique_log` (`deviceID`,`%s`)' % (table_name, mb_config_check_item[log_table]['log_time_regname']))
                     except:
                         printLog("Failed to create index for table %s. Insufficient privilege?" % table_name, 'error')
-            
-            app_exit(0)
+                        index_failed += 1
+                else:
+                    try:
+                        db_cur.execute('CREATE TRIGGER `UPDATE_CHECK` AFTER UPDATE ON `%s` FOR EACH ROW UPDATE %s_update_check SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND Date_End IS NULL' % (table_name, db_config_detail[0]['tbl_prefix']))
+                    except:
+                        printLog("Failed to create trigger for table %s. Insufficient privilege?" % table_name, 'error')
+                        index_failed += 1
+
+                if index_failed > 0:
+                    db_cur.execute('DROP TABLE %s' % table_name)
+                    printLog("Rolling back create table %s." % table_name, 'error')
+                    table_errors += 1
+
+            try:
+                db_cur.execute(EVENT_NOT_UPDATE_CHECK % (db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
+            except:
+                printLog("Failed to create event on database %s. Insufficient privilege?" % db_config_detail[0]['db_name'], 'error')
+                table_errors += 1
+
+            if table_errors > 0:
+                printLog("WARNING: Not all table created successfully. Run this again after fixing the error(s).", 'error')
+
+            app_exit(table_errors)
         """ END -- Create tables if --create-tables argument is passed """
 
     current_log_timers = {}
