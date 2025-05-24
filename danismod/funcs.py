@@ -1,9 +1,6 @@
-# arkanod
-Any AMR or Modbus inquiries? Feel free to contact me at wishnu@pahlevi.id!
-
-Poll EVC (Electronic Volume Corrector) data and archive log periodically using the 0-based address MODBUS protocol.
-
-Usage: python3 -m arkanod
+# -*- coding: utf-8 -*-
+"""
+Danismod - A collection of functions and procedures involved in Arkanod development.
 
 License:
     MIT License
@@ -28,13 +25,30 @@ License:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
+The danismod module general functions initialization file.
+"""
 
-A more detailed explanation about how to use this software can be obtained by sending me an email.
+def printLog(msg: str, level: str = 'info'):
+    import logging
 
-More about the author:
-    APNIC: WAP1-AP
-    One of the founders of CyberPlus (PT Cyberplus Media Pratama - https://www.cyberplus.net.id/ - AS38771), an Internet Service Provider and IT System Integrator based in Bekasi, Indonesia since 2005.
-    Part-time CTO of CyberPlus.
-    Full-time Dad of ARP, RDP, NTP.
-    Former IT Senior Manager of a shipping company in Indonesia.
-    Former ICT Manager of a natural gas trader company.
+    if logging.getLogger().hasHandlers():
+        if level == 'info':
+            logging.info(msg)
+        elif level == 'debug':
+            logging.debug(msg)
+        elif level == 'error':
+            logging.error(msg)
+        elif level == 'critical':
+            logging.critical(msg)
+    else:
+        print(msg)
+
+def dt_utc_to_current(datetime_str: int, data_type: str = 'dt1'):
+    from datetime import datetime, timezone
+
+    data_type = 'dt1' if data_type == 'dt2' and datetime_str == 0 else data_type
+
+    if data_type == 'dt1':
+        return datetime.strptime(str(datetime.fromtimestamp(datetime_str, timezone.utc)), '%Y-%m-%d %H:%M:%S%z')
+    elif data_type == 'dt2':             
+        return datetime.strptime(datetime_str, '%y%m%d%H%M%S')

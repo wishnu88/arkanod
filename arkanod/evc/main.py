@@ -1,255 +1,91 @@
-#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Poll EVC (Electronic Volume Corrector) data and archive log periodically using the 0-based address MODBUS protocol.
 
-import yaml
+Usage: python3 -m arkanod
+
+License:
+    MIT License
+
+    Copyright (c) 2024-2025 Wishnu Adhi Pahlevi <wishnu@pahlevi.id>
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the “Software”), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+    
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+The main application file.
+"""
+
+# Import system dependencies.
 import mariadb
 import sys
-import os
-import logging
 from signal import (signal as os_signal, SIGTERM, SIGINT, SIGHUP)
-from pymodbus.constants import Endian
-from pymodbus.payload import BinaryPayloadDecoder
-from pymodbus.transaction import (ModbusRtuFramer, ModbusAsciiFramer, ModbusSocketFramer)
 from time import (sleep, time as millis)
-from datetime import (datetime, timezone, timedelta)
+from datetime import timedelta
 
-class Loader(yaml.SafeLoader):
+# Import custom build dependencies.
+from .const import *
+from danismod.yaml_include import *
+from danismod.funcs import printLog, dt_utc_to_current
+from danismod.mb_funcs import *
+from danismod.db_funcs import db_close
 
-    def __init__(self, stream):
-
-        self._root = os.path.split(stream.name)[0]
-
-        super(Loader, self).__init__(stream)
-
-    def include(self, node):
-
-        filename = os.path.join(self._root, self.construct_scalar(node))
-
-        with open(filename, 'r') as f:
-            return yaml.load(f, Loader)
-
-Loader.add_constructor('!include', Loader.include)
-
-modbus_type_list = [
-    'rtuovertcp',
-    'rtu',
-    'tcp',
-    'ascii'
-]
-
-register_type_list = [
-    'coil',
-    'input',
-    'holding'
-]
-
-swap_type_list = [
-    'byte',
-    'word',
-    'word_byte',
-    'none'
-]
-
-data_type_list = [
-    'float16',
-    'float32',
-    'float64',
-    'int8',
-    'int16',
-    'int32',
-    'int64',
-    'string',
-    'uint8',
-    'uint16',
-    'uint32',
-    'uint64',
-    'dt1',
-    'dt2',
-    'bits',
-    'ignore'
-]
-
-archive_log_list = [
-    'hourly_log',
-    'daily_log',
-    'monthly_log'
-]
-
-archive_log_enabled = {
-    'hourly_log': True,
-    'daily_log': True,
-    'monthly_log': True,
-}
-
-archive_log_failed = {
-    'hourly_log': False,
-    'daily_log': False,
-    'monthly_log': False,
-}
-
-TRIGGER_REQ_DATALOG = """
-CREATE TRIGGER `REQ_DATALOG` AFTER UPDATE ON `%s` FOR EACH ROW BEGIN
-    DECLARE xDate_Start INT unsigned;
-    DECLARE xDate_End INT unsigned;
-    DECLARE devID INT unsigned;
-    DECLARE hourly_retention INT unsigned;
-    DECLARE daily_retention INT unsigned;
-    
-    SET devID=new.deviceID;
-
-    SELECT UNIX_TIMESTAMP(Date_Start), UNIX_TIMESTAMP(Date_End) INTO xDate_Start, xDate_End FROM %s_update_check WHERE deviceID = devID;
-
-    SET hourly_retention=FLOOR((xDate_End - xDate_Start) / 3600);
-
-    IF hourly_retention > 0 THEN
-        INSERT INTO %s_request_log (deviceID, archiveLog, logRetention) VALUES (devID, 0, hourly_retention);
-    END IF;
-
-    IF hourly_retention > 48 THEN
-        SET daily_retention=FLOOR((xDate_End - xDate_Start) / 86400);
-        INSERT INTO %s_request_log (deviceID, archiveLog, logRetention) VALUES (devID, 1, daily_retention);
-    END IF;
-END"""
-
-EVENT_NOT_UPDATE_CHECK = """
-CREATE EVENT IF NOT EXISTS `NOT_UPDATE_CHECK` ON SCHEDULE EVERY 1 HOUR STARTS '2021-12-25 00:00:00' ON COMPLETION NOT PRESERVE ENABLE DO BEGIN
-    DELETE FROM `%s_update_check` WHERE Date_End IS NOT NULL;
-    INSERT INTO %s_update_check (`deviceID`,`Date_Start`) SELECT deviceID, LastUpdated FROM %s_current_log WHERE (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(LastUpdated)) > 3600 AND deviceID NOT IN (SELECT deviceID FROM %s_update_check);
-END """
-
+# Variable initialization for storing configured group_ids.
 group_id_list = {}
 
+# Loop breaker variable initialization.
+is_running = True
+
+# Initialization of predefined constants and operation variables when --create-tables is called.
 if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
-    register_conversion_fields = {archive_log: [] for archive_log in archive_log_list}
-else:
-    del TRIGGER_REQ_DATALOG
-    del EVENT_NOT_UPDATE_CHECK
+    from .db_const import TRIGGER_REQ_DATALOG, EVENT_NOT_UPDATE_CHECK
+    register_conversion_fields = {archive_log: [] for archive_log in ARCHIVE_LOG_LIST}
 
-isRunning = True
+def app_exit(exit_val: int = 0):
+    """
+    Exit the main program with 0 exit status by default.
 
-def printLog(msg: str, level: str = 'info'):
-    if logging.getLogger().hasHandlers():
-        if level == 'info':
-            logging.info(msg)
-        elif level == 'debug':
-            logging.debug(msg)
-        elif level == 'error':
-            logging.error(msg)
-        elif level == 'critical':
-            logging.critical(msg)
-    else:
-        print(msg)
+    Optional keyword argument:
+    exit_val: int; default to 0, means no error occurred while exiting, error indicated if it is greater than 0 (see UNIX exit status).
+    """
 
-def db_close():
-    global db_conn
+    global is_running
+    is_running = False
 
-    if 'db_conn' in globals():
-        printLog("Closing MariaDB database...")
-        db_conn.close()
-        del db_conn
+    try:
+        modbus_close(client)
+        db_close(db_conn)
+    finally:
+        printLog('Exited with error(s).' if exit_val > 0 else 'Graceful exit done.')   
+        sys.exit(exit_val)
 
-def modbus_close():
-    global client
+def get_log_group_ids(register_group_ids: list) -> list:
+    """
+    Return list of every group_id MODBUS register address referenced in the configured EVC log.
 
-    if 'client' in globals() and isinstance(client, object) and len(client) > 0:
-        printLog("Disconnecting from Modbus devices...")
-        for client_conn in client:
-            if client[client_conn].connected == True:
-                client[client_conn].close()
-        del client
+    Mandatory keyword argument:
+    register_group_ids: list; group_id list configured for the corresponding EVC log.
+    """
 
-def app_exit(exitVal: int = 0):
-    global isRunning
-
-    isRunning = False
-
-    modbus_close()
-    db_close()
-    printLog('Exited with error(s).' if exitVal > 0 else 'Graceful exit done.')   
-    sys.exit(exitVal)
-
-def convert_registers(registers, swap_type: str = "none"):
-    if swap_type == 'word':
-        byte_order = Endian.BIG
-        word_order = Endian.LITTLE
-    elif swap_type == 'word_byte':
-        byte_order = word_order = Endian.BIG
-    else:
-        byte_order = Endian.LITTLE
-        word_order = Endian.BIG
-
-    return BinaryPayloadDecoder.fromRegisters(registers, byte_order, wordorder=word_order) if swap_type != "none" else BinaryPayloadDecoder.fromRegisters(registers)
-
-def decode_results(results, data_type):
-
-    if data_type == 'ignore':
-        decoded = results.skip_bytes(8)
-    elif data_type == 'bits':
-        decoded = results.decode_bits()
-    elif data_type == 'float16':
-        decoded = results.decode_16bit_float()
-    elif data_type == 'float32':
-        decoded = results.decode_32bit_float()
-    elif data_type == 'float64':
-        decoded = results.decode_64bit_float()
-    elif data_type == 'int8':
-        decoded = results.decode_8bit_int()
-    elif data_type == 'int16':
-        decoded = results.decode_16bit_int()
-    elif data_type == 'int32':
-        decoded = results.decode_32bit_int()
-    elif data_type == 'int64':
-        decoded = results.decode_64bit_int()
-    elif data_type == 'string':
-        decoded = results.decode_string()
-    elif data_type == 'uint8':
-        decoded = results.decode_8bit_uint()
-    elif data_type == 'uint16':
-        decoded = results.decode_16bit_uint()
-    elif data_type == 'uint32':
-        decoded = results.decode_32bit_uint()
-    elif data_type == 'uint64':
-        decoded = results.decode_64bit_uint()
-    elif data_type == 'dt1':
-        decoded = results.decode_32bit_uint()
-    elif data_type == 'dt2':
-        hex_values = ["{:04x}".format(register) for register in results]
-        decoded = "".join(hex_values)
-
-    return decoded
-
-def mb_connect(type, port: str, host: str = None, mb_timeout: int = None):
-    if isRunning == False:
-        return
-
-    if type in ['rtuovertcp','tcp']:        
-        try:
-            printLog("Connecting to %s port %s..." % (host, port))
-            if 'ModbusTcpClient' not in sys.modules:
-                from pymodbus.client import ModbusTcpClient
-            client = ModbusTcpClient(host=host, port=int(port), framer=ModbusRtuFramer if type == 'rtu' or type == 'rtuovertcp' else ModbusSocketFramer if type == 'tcp' else ModbusAsciiFramer, timeout=mb_timeout)
-            client.connect()
-            printLog("Connected succesfully to %s port %s!" % (host, port))
-            return client
-        except:
-            printLog('Unable to establish connection to %s port %s.' % (host, port), 'error')
-    elif type == 'rtu':        
-        try:
-            printLog("Connecting to port %s..." % port)
-            if 'ModbusSerialClient' not in sys.modules:
-                from pymodbus.client import ModbusSerialClient
-            client = ModbusSerialClient(port=port, framer=ModbusRtuFramer if type == 'rtu' or type == 'rtuovertcp' else ModbusSocketFramer if type == 'tcp' else ModbusAsciiFramer, timeout=mb_timeout)
-            client.connect()
-            printLog("Connected succesfully to %s port %s!" % (host, port))
-            return client
-        except:
-            printLog('Unable to establish connection to %s port %s.' % (host, port), 'error')
-
-def get_log_group_ids(register_group_ids) -> list:
     register_group_address = []
 
     for register_group in mb_config_item['register_group']:
 
-        """ Skip group_id not included in group_ids """
+        # Skip group_id not included in group_ids.
         if register_group['group_id'] not in register_group_ids:
             continue
 
@@ -257,7 +93,16 @@ def get_log_group_ids(register_group_ids) -> list:
 
     return register_group_address
 
-def get_evc_log(register_groups, slaveID = None) -> dict:
+def get_evc_log(register_groups: list, slave_id: int = None) -> dict:
+    """
+    Get log items value fron EVC and return the dict of it.
+
+    Mandatory keyword argument:
+    register_groups: list; MODBUS register address groups configured for the corresponding EVC log.
+
+    Optional keyword argument:
+    slave_id: int; specify device ID of configured EVC. Must be specified when retrieving the EVC archive log.
+    """
     global client
     
     register_group_address = {}
@@ -268,22 +113,26 @@ def get_evc_log(register_groups, slaveID = None) -> dict:
         
         current_slave_id = int(register_group['slave'])
         register_items[current_slave_id] = {}
-        if slaveID is not None and slaveID != current_slave_id:
+        if slave_id is not None and slave_id != current_slave_id:
             continue
         register_gap = 0 if 'gap' not in register_group else register_group['gap']
 
-        """ Modbus read delay """
+        # Modbus read delay.
         sleep((mb_config_item['wait_milliseconds'] / 1000))
+
         try:
+            # Read from the EVC using MODBUS protocol.
             if register_group['type'] == "input":
                 result = client[mb_config_item['name']].read_input_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
             elif register_group['type'] == "holding":
                 result = client[mb_config_item['name']].read_holding_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
         except:
+            # Throw an error when the EVC didn't response to MODBUS poll.
             printLog('Unable to poll Modbus device on %s port %s with slave ID %s. Moving on...' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port'], register_group['slave']), 'error')
             sleep(mb_config_item['timeout_seconds'])
             continue
 
+        # Throw an error when no register value is received from the EVC, although it responds to the MODBUS poll.
         if hasattr(result, 'registers') == False:
             printLog('Unexpected response from Modbus device on %s port %s with slave ID %s.' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port'], register_group['slave']), 'error')
             sleep(mb_config_item['timeout_seconds'])
@@ -328,12 +177,12 @@ def get_evc_log(register_groups, slaveID = None) -> dict:
                 register_items[current_slave_id][register_conversion['name']] = round(register_value, register_value_precision) if register_value_precision != "none" else register_value
                 register_slave_ids[register_conversion['name']] = current_slave_id
 
-    return {'items': register_items if slaveID is None else register_items[slaveID], 'slaveIDs': register_slave_ids}
+    return {'items': register_items if slave_id is None else register_items[slave_id], 'slaveIDs': register_slave_ids}
 
 def send_archive_log(deviceID: int, group_ids, kind: str, retention: int = 0, slaveID: int = 1) -> dict:
     success_status = 0
 
-    if kind in archive_log_list:
+    if kind in ARCHIVE_LOG_LIST:
         archive_log_group_ids = get_log_group_ids(group_ids)
         
         all_archive_log_items = []
@@ -388,14 +237,6 @@ def send_current_log(deviceID: int, items: dict = None, insert_log = False) -> b
             return False
     return True
 
-def dt_utc_to_current(datetime_str: int, data_type: str = 'dt1') -> datetime:
-    data_type = 'dt1' if data_type == 'dt2' and datetime_str == 0 else data_type
-
-    if data_type == 'dt1':
-        return datetime.strptime(str(datetime.fromtimestamp(datetime_str, timezone.utc)), '%Y-%m-%d %H:%M:%S%z')
-    elif data_type == 'dt2':             
-        return datetime.strptime(datetime_str, '%y%m%d%H%M%S')
-
 def signal_term_handler(signal, frame):
     if signal in [SIGTERM, SIGINT]:
         app_exit()
@@ -406,7 +247,7 @@ def signal_term_handler(signal, frame):
 def register_group_paramcheck(param_name: str, grp_item_index: int):
     global mb_config_check_item, error_len, register_group_item
 
-    log_types = archive_log_list[:]
+    log_types = ARCHIVE_LOG_LIST[:]
     log_types.append('current_log')
 
     if param_name in register_group_item:
@@ -423,8 +264,8 @@ def register_group_paramcheck(param_name: str, grp_item_index: int):
         if param_name != 'type' and isinstance(register_group_item[param_name], int) == False:
             printLog('[Item %s - register_group - Group Item %s] Invalid %s settings. It should be an integer.' % (item_index, grp_item_index, param_name), 'error')
             error_len = error_len + 1
-        elif param_name == 'type' and register_group_item[param_name] not in register_type_list:
-            printLog('[Item %s - register_group - Group Item %s] Invalid Modbus register type option (type: %s). Supported options are: %s.' % (item_index, grp_item_index, register_group_item[param_name], modbus_type_list), 'error')
+        elif param_name == 'type' and register_group_item[param_name] not in REGISTER_TYPE_LIST:
+            printLog('[Item %s - register_group - Group Item %s] Invalid Modbus register type option (type: %s). Supported options are: %s.' % (item_index, grp_item_index, register_group_item[param_name], MODBUS_TYPE_LIST), 'error')
             error_len = error_len + 1
     else:
         printLog('[Item %s - register_group - Group Item %s] Unable to find %s settings.' % (item_index, grp_item_index, param_name), 'error')
@@ -465,11 +306,11 @@ def register_conversion_paramcheck(param_name: str, conversion_item_index: int):
                             if not regnum['start'] <= register_conversion_item['registers'][0] <= regnum['end'] or not regnum['start'] <= register_conversion_item['registers'][1] <= regnum['end']:
                                 printLog('[Item %s - register_conversion - Group Item %s] Invalid %s settings for conversion name: %s. Modbus register address not in the correct range of group_id %s (should be between %s - %s).' % (item_index, conversion_item_index, 'registers', register_conversion_item['name'], curr_group_id, regnum['start'], regnum['end']), 'error')
                                 error_len = error_len + 1
-        elif param_name == 'data_type' and register_conversion_item['data_type'] not in data_type_list:
-            printLog('[Item %s - register_conversion - Group Item %s] Invalid %s settings for conversion name: %s. Valid options are: %s.' % (item_index, conversion_item_index, 'data_type', register_conversion_item['name'], data_type_list), 'error')
+        elif param_name == 'data_type' and register_conversion_item['data_type'] not in DATA_TYPE_LIST:
+            printLog('[Item %s - register_conversion - Group Item %s] Invalid %s settings for conversion name: %s. Valid options are: %s.' % (item_index, conversion_item_index, 'data_type', register_conversion_item['name'], DATA_TYPE_LIST), 'error')
             error_len = error_len + 1
-        elif param_name == 'swap' and register_conversion_item['swap'] not in swap_type_list:
-            printLog('[Item %s - register_conversion - Group Item %s] Invalid %s settings for conversion name: %s. Valid options are: %s.' % (item_index, conversion_item_index, 'swap', register_conversion_item['name'], swap_type_list), 'error')
+        elif param_name == 'swap' and register_conversion_item['swap'] not in SWAP_TYPE_LIST:
+            printLog('[Item %s - register_conversion - Group Item %s] Invalid %s settings for conversion name: %s. Valid options are: %s.' % (item_index, conversion_item_index, 'swap', register_conversion_item['name'], SWAP_TYPE_LIST), 'error')
             error_len = error_len + 1
         elif param_name == 'precision':
             if isinstance(register_conversion_item['precision'], int) == False and register_conversion_item['precision'] != 'none':
@@ -491,14 +332,16 @@ for current_os_signal in [SIGINT, SIGHUP, SIGTERM]:
 
 app_stage = 0
 
-while isRunning:
+while is_running:
 
     if 'glob' not in sys.modules:
         from glob import glob
 
     mb_config_detail = []
-    for slave_config in glob('slaves/*.modbus.yaml'):
+    mb_config_files = 0
+    for slave_config in glob('config/slaves/*.modbus.yaml'):
         with open(slave_config, 'r') as mb_config:
+            mb_config_files += 1
             printLog('Loading Modbus devices settings from %s...' % slave_config)
             mb_config_detail += yaml.load(mb_config, Loader)
 
@@ -648,7 +491,7 @@ while isRunning:
             """ END - Sanity check for current_log settings """
 
             """ START - Sanity check for hourly_log, daily_log, monthly_log settings """
-            for current_archive_log in archive_log_list:
+            for current_archive_log in ARCHIVE_LOG_LIST:
                 if current_archive_log in mb_config_check_item:
 
                     """ START - Sanity check for hourly_log, daily_log, monthly_log --> max_retention settings """
@@ -695,7 +538,7 @@ while isRunning:
 
                 else:
                     printLog('[Item %s] Unable to find %s settings. Disabling it.' % (item_index, current_archive_log))
-                    archive_log_enabled[current_archive_log] = False
+                    ARCHIVE_LOG_ENABLED[current_archive_log] = False
 
             """ END - Sanity check for hourly_log, daily_log, monthly_log settings """
 
@@ -777,6 +620,9 @@ while isRunning:
 
     if error_len > 0:
         app_exit(1)
+    elif mb_config_files == 0:
+        printLog("No Modbus device settings file found, aborting.")
+        app_exit(1)
     else:
         printLog('Modbus devices settings loaded successfully.')
         del mb_config_check_all
@@ -784,8 +630,8 @@ while isRunning:
     """ END - Modbus config sanity check and default value """
         
 
-    with open('db.yaml', 'r') as db_config:
-        printLog('Loading MariaDB database settings from db.yaml...')
+    with open('config/db.yaml', 'r') as db_config:
+        printLog('Loading MariaDB database settings from config/db.yaml...')
         db_config_check = db_config_detail = yaml.safe_load(db_config)
 
         """ START - DB config sanity check and default value """
@@ -837,126 +683,8 @@ while isRunning:
 
         """ START -- Create tables if --create-tables argument is passed """
         if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
-            data_type = {
-                'float16': 'float',
-                'float32': 'float',
-                'float64': 'double',
-                'int8': 'tinyint',
-                'int16': 'smallint',
-                'int32': 'int',
-                'int64': 'bigint',
-                'uint8': 'tinyint UNSIGNED',
-                'uint16': 'smallint UNSIGNED',
-                'uint32': 'int UNSIGNED',
-                'uint64': 'bigint UNSIGNED',
-                'string':'text',
-                'dt1': 'datetime',
-                'dt2': 'datetime',
-                'bits': 'bit(8)'
-            }
-
-            def check_table_exists(table_name: str) -> bool:
-                db_cur.execute('SHOW TABLE STATUS FROM %s WHERE Name = ?' % db_config_detail[0]['db_name'], [table_name])
-                if db_cur.rowcount > 0:
-                    return True
-                return False
-
-            def create_table_exec(table_name: str, query: str):
-                global table_errors
-
-                try:
-                    db_cur.execute(query)
-                except Exception as e:
-                    printLog(e, 'error')
-                    table_errors += 1
-                else:
-                    printLog('Table %s is successfully created.' % table_name)
-
-            oper_tables = {
-                'devices': "(`id` int AUTO_INCREMENT PRIMARY KEY, `mbmaster_name` varchar(30) NOT NULL, `slaveID` tinyint NOT NULL DEFAULT 1, DeviceCreated DATETIME DEFAULT current_timestamp(), LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP()) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4",
-                'request_log': "(`id` BIGINT AUTO_INCREMENT PRIMARY KEY, `deviceID` int NOT NULL, `archiveLog` tinyint NOT NULL, `logRetention` smallint NOT NULL, `requestStatus` tinyint NOT NULL DEFAULT 0, `RequestCreated` datetime NOT NULL DEFAULT current_timestamp(), `LastUpdated` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4",
-                'update_check': "(`id` INT AUTO_INCREMENT PRIMARY KEY, `deviceID` int NOT NULL, `Date_Start` datetime NOT NULL, `Date_End` datetime DEFAULT NULL) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4"
-            }
-
-            table_errors = 0
-            for oper_table in oper_tables:
-                index_failed = 0
-                table_name = db_config_detail[0]['tbl_prefix'] + '_' + oper_table
-                if check_table_exists(table_name):
-                    printLog('Table %s is already exists, skipping.' % table_name)
-                    continue
-
-                create_table_exec(table_name, "CREATE TABLE %s " % table_name + oper_tables[oper_table])
-
-                if oper_table == 'devices':
-                    try:
-                        db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `unique_dev` (`mbmaster_name`,`slaveID`)' % table_name)
-                    except:
-                        printLog("Failed to create index for table %s. Insufficient privilege?" % table_name, 'error')
-                        index_failed += 1
-                elif oper_table == 'update_check':
-                    try:
-                        db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `deviceID` (`deviceID`)' % table_name)
-                    except:
-                        printLog("Failed to create index for table %s. Insufficient privilege?" % table_name, 'error')
-                        index_failed += 1
-                    else:
-                        try:
-                            db_cur.execute(TRIGGER_REQ_DATALOG % (table_name, db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
-                        except mariadb.Error as e:
-                            printLog("Failed to create trigger for table %s: %s" % (table_name, e), 'error')
-                            index_failed += 1
-                
-                if index_failed > 0:
-                    db_cur.execute('DROP TABLE %s' % table_name)
-                    printLog("Rolling back create table %s." % table_name, 'error')
-                    table_errors += 1
-
-            for log_table in register_conversion_fields:
-                index_failed = 0
-                table_name = db_config_detail[0]['tbl_prefix'] + '_' + log_table
-                fields_created = []
-                table_fields = []
-                if check_table_exists(table_name):
-                    printLog('Table %s is already exists, skipping.' % table_name)
-                    continue
-
-                q_create_table = ("CREATE TABLE %s (`id` %sINT AUTO_INCREMENT PRIMARY KEY, deviceID INT NOT NULL, " % (table_name, 'BIG' if log_table == 'hourly_log' else ''))
-                for item_field in register_conversion_fields[log_table]:
-                    if item_field['item'] not in fields_created:
-                        fields_created.append(item_field['item'])
-                        table_fields.append("`" + item_field['item'] + "` %s" % data_type[item_field['data_type']])
-                q_create_table += ", ".join(table_fields) + ", LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP()) ENGINE=" + ("InnoDB" if log_table != "current_log" else "MyISAM") + " DEFAULT CHARSET=utf8mb4"
-                create_table_exec(table_name, q_create_table)
-
-                if log_table != "current_log":
-                    try:
-                        db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `unique_log` (`deviceID`,`%s`)' % (table_name, mb_config_check_item[log_table]['log_time_regname']))
-                    except:
-                        printLog("Failed to create index for table %s. Insufficient privilege?" % table_name, 'error')
-                        index_failed += 1
-                else:
-                    try:
-                        db_cur.execute('CREATE TRIGGER `UPDATE_CHECK` AFTER UPDATE ON `%s` FOR EACH ROW UPDATE %s_update_check SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND Date_End IS NULL' % (table_name, db_config_detail[0]['tbl_prefix']))
-                    except:
-                        printLog("Failed to create trigger for table %s. Insufficient privilege?" % table_name, 'error')
-                        index_failed += 1
-
-                if index_failed > 0:
-                    db_cur.execute('DROP TABLE %s' % table_name)
-                    printLog("Rolling back create table %s." % table_name, 'error')
-                    table_errors += 1
-
-            try:
-                db_cur.execute(EVENT_NOT_UPDATE_CHECK % (db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
-            except:
-                printLog("Failed to create event on database %s. Insufficient privilege?" % db_config_detail[0]['db_name'], 'error')
-                table_errors += 1
-
-            if table_errors > 0:
-                printLog("WARNING: Not all table created successfully. Run this again after fixing the error(s).", 'error')
-
-            app_exit(table_errors)
+            from .db_tables_create import init_create_tables
+            init_create_tables(db_cur)
         """ END -- Create tables if --create-tables argument is passed """
 
     current_log_timers = {}
@@ -977,7 +705,7 @@ while isRunning:
                 
                 client[mb_config_item['name']] = mb_connect(mb_config_item['type'], host=mb_config_item['host'], port=mb_config_item['port'], mb_timeout=mb_config_item['timeout_seconds'])
 
-            if round(millis()*1000) - current_log_timers[mb_config_item['name']] >= int(mb_config_item['current_log']['scan_interval_ms']) and client[mb_config_item['name']].connected == True and isRunning == True:
+            if round(millis()*1000) - current_log_timers[mb_config_item['name']] >= int(mb_config_item['current_log']['scan_interval_ms']) and client[mb_config_item['name']].connected == True and is_running == True:
 
                 """ Reset timer, waiting for the next cycle """
                 current_log_timers[mb_config_item['name']] = round(millis()*1000)
@@ -1021,29 +749,29 @@ while isRunning:
                             current_dtu_str = dt_utc_to_current(register_items[evctime_reg['name']], evctime_reg['data_type'])
 
                             """ Get hourly log when EVC hour has changed """
-                            if (last_dtu_str.hour != current_dtu_str.hour or archive_log_failed['hourly_log'] == True) and archive_log_enabled['hourly_log'] == True:
+                            if (last_dtu_str.hour != current_dtu_str.hour or ARCHIVE_LOG_FAILED['hourly_log'] == True) and ARCHIVE_LOG_ENABLED['hourly_log'] == True:
                                 if send_archive_log(current_device_id[mb_config_item['name']], mb_config_item['hourly_log']['group_ids'], 'hourly_log')['status'] != 1:
-                                    archive_log_failed['hourly_log'] = True
+                                    ARCHIVE_LOG_FAILED['hourly_log'] = True
                                 else:
-                                    archive_log_failed['hourly_log'] = False if archive_log_failed['hourly_log'] == True else archive_log_failed['hourly_log']
+                                    ARCHIVE_LOG_FAILED['hourly_log'] = False if ARCHIVE_LOG_FAILED['hourly_log'] == True else ARCHIVE_LOG_FAILED['hourly_log']
 
                             if mb_config_item['daily_log']['day_start_hour'] > 0:
                                 last_dtu_str -= timedelta(hours=mb_config_item['daily_log']['day_start_hour'])
                                 current_dtu_str -= timedelta(hours=mb_config_item['daily_log']['day_start_hour'])
 
                             """ Get daily log when EVC day has changed """
-                            if (last_dtu_str.day != current_dtu_str.day or archive_log_failed['daily_log'] == True) and archive_log_enabled['daily_log'] == True:
+                            if (last_dtu_str.day != current_dtu_str.day or ARCHIVE_LOG_FAILED['daily_log'] == True) and ARCHIVE_LOG_ENABLED['daily_log'] == True:
                                 if send_archive_log(current_device_id[mb_config_item['name']], mb_config_item['daily_log']['group_ids'], 'daily_log')['status'] != 1:
-                                    archive_log_failed['daily_log'] = True
+                                    ARCHIVE_LOG_FAILED['daily_log'] = True
                                 else:
-                                    archive_log_failed['daily_log'] = False if archive_log_failed['daily_log'] == True else archive_log_failed['daily_log']
+                                    ARCHIVE_LOG_FAILED['daily_log'] = False if ARCHIVE_LOG_FAILED['daily_log'] == True else ARCHIVE_LOG_FAILED['daily_log']
 
                             """ Get monthly log when EVC month has changed """
-                            if (last_dtu_str.month != current_dtu_str.month or archive_log_failed['monthly_log'] == True) and archive_log_enabled['monthly_log'] == True:
+                            if (last_dtu_str.month != current_dtu_str.month or ARCHIVE_LOG_FAILED['monthly_log'] == True) and ARCHIVE_LOG_ENABLED['monthly_log'] == True:
                                 if send_archive_log(current_device_id[mb_config_item['name']], mb_config_item['monthly_log']['group_ids'], 'monthly_log')['status'] != 1:
-                                    archive_log_failed['monthly_log'] = True
+                                    ARCHIVE_LOG_FAILED['monthly_log'] = True
                                 else:
-                                    archive_log_failed['monthly_log'] = False if archive_log_failed['monthly_log'] == True else archive_log_failed['monthly_log']
+                                    ARCHIVE_LOG_FAILED['monthly_log'] = False if ARCHIVE_LOG_FAILED['monthly_log'] == True else ARCHIVE_LOG_FAILED['monthly_log']
 
                             if mb_config_item['daily_log']['day_start_hour'] > 0:
                                 last_dtu_str += timedelta(hours=mb_config_item['daily_log']['day_start_hour'])
@@ -1051,13 +779,13 @@ while isRunning:
 
                             """ START - Check Request Log """
                             q_check_request_log = "SELECT id, archiveLog, logRetention FROM %s_request_log WHERE deviceID = ? AND requestStatus = 0 AND archiveLog >= 0 AND archiveLog < ?" % db_config_detail[0]['tbl_prefix']
-                            db_cur.execute(q_check_request_log, (current_device_id[mb_config_item['name']], len(archive_log_list)))
+                            db_cur.execute(q_check_request_log, (current_device_id[mb_config_item['name']], len(ARCHIVE_LOG_LIST)))
 
                             if db_cur.rowcount > 0:
                                 rows_request_log = db_cur.fetchall()
                                 for row_request_log in rows_request_log:
-                                    if row_request_log[2] <= mb_config_item[archive_log_list[row_request_log[1]]]['max_retention'] and archive_log_enabled[archive_log_list[row_request_log[1]]] == True:
-                                        if len(send_archive_log(current_device_id[mb_config_item['name']], mb_config_item[archive_log_list[row_request_log[1]]]['group_ids'], archive_log_list[row_request_log[1]], row_request_log[2])['items']) > 0:
+                                    if row_request_log[2] <= mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['max_retention'] and ARCHIVE_LOG_ENABLED[ARCHIVE_LOG_LIST[row_request_log[1]]] == True:
+                                        if len(send_archive_log(current_device_id[mb_config_item['name']], mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['group_ids'], ARCHIVE_LOG_LIST[row_request_log[1]], row_request_log[2])['items']) > 0:
                                             q_request_log_status = 1
                                         else:
                                             q_request_log_status = 2
@@ -1074,5 +802,8 @@ while isRunning:
         except KeyboardInterrupt:
             app_exit()
 
-    modbus_close()
-    db_close()
+    try:
+        modbus_close(client)
+        db_close(db_conn)
+    finally:
+        pass

@@ -1,9 +1,6 @@
-# arkanod
-Any AMR or Modbus inquiries? Feel free to contact me at wishnu@pahlevi.id!
-
-Poll EVC (Electronic Volume Corrector) data and archive log periodically using the 0-based address MODBUS protocol.
-
-Usage: python3 -m arkanod
+# -*- coding: utf-8 -*-
+"""
+Danismod - A collection of functions and procedures involved in Arkanod development.
 
 License:
     MIT License
@@ -28,13 +25,28 @@ License:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
+The danismod module database functions initialization file.
+"""
 
-A more detailed explanation about how to use this software can be obtained by sending me an email.
+def check_table_exists(table_name: str, db_name: str, db_cur: object) -> bool:
+    db_cur.execute('SHOW TABLE STATUS FROM %s WHERE Name = ?' % db_name, [table_name])
+    if db_cur.rowcount > 0:
+        return True
+    return False
 
-More about the author:
-    APNIC: WAP1-AP
-    One of the founders of CyberPlus (PT Cyberplus Media Pratama - https://www.cyberplus.net.id/ - AS38771), an Internet Service Provider and IT System Integrator based in Bekasi, Indonesia since 2005.
-    Part-time CTO of CyberPlus.
-    Full-time Dad of ARP, RDP, NTP.
-    Former IT Senior Manager of a shipping company in Indonesia.
-    Former ICT Manager of a natural gas trader company.
+def create_table_exec(table_name: str, query: str, db_cur: object):
+    from .funcs import printLog
+    try:
+        db_cur.execute(query)
+    except Exception as e:
+        printLog(e, 'error')
+        table_errors += 1
+    else:
+        printLog('Table %s is successfully created.' % table_name)
+
+def db_close(db_conn: object):
+    from danismod.funcs import printLog
+    if isinstance(db_conn, object):
+        printLog("Closing MariaDB database...")
+        db_conn.close()
+        del db_conn

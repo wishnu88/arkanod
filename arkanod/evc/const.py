@@ -1,9 +1,6 @@
-# arkanod
-Any AMR or Modbus inquiries? Feel free to contact me at wishnu@pahlevi.id!
-
+# -*- coding: utf-8 -*-
+"""
 Poll EVC (Electronic Volume Corrector) data and archive log periodically using the 0-based address MODBUS protocol.
-
-Usage: python3 -m arkanod
 
 License:
     MIT License
@@ -28,13 +25,62 @@ License:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
+The evc module general constants initialization file.
+"""
 
-A more detailed explanation about how to use this software can be obtained by sending me an email.
+MODBUS_TYPE_LIST = [
+    'rtuovertcp',
+    'rtu',
+    'tcp',
+    'ascii'
+]
 
-More about the author:
-    APNIC: WAP1-AP
-    One of the founders of CyberPlus (PT Cyberplus Media Pratama - https://www.cyberplus.net.id/ - AS38771), an Internet Service Provider and IT System Integrator based in Bekasi, Indonesia since 2005.
-    Part-time CTO of CyberPlus.
-    Full-time Dad of ARP, RDP, NTP.
-    Former IT Senior Manager of a shipping company in Indonesia.
-    Former ICT Manager of a natural gas trader company.
+REGISTER_TYPE_LIST = [
+    'coil',
+    'input',
+    'holding'
+]
+
+SWAP_TYPE_LIST = [
+    'byte',
+    'word',
+    'word_byte',
+    'none'
+]
+
+DATA_TYPE_LIST = [
+    'float16',
+    'float32',
+    'float64',
+    'int8',
+    'int16',
+    'int32',
+    'int64',
+    'string',
+    'uint8',
+    'uint16',
+    'uint32',
+    'uint64',
+    'dt1',
+    'dt2',
+    'bits',
+    'ignore'
+]
+
+ARCHIVE_LOG_LIST = [
+    'hourly_log',
+    'daily_log',
+    'monthly_log'
+]
+
+ARCHIVE_LOG_ENABLED = {
+    'hourly_log': True,
+    'daily_log': True,
+    'monthly_log': True,
+}
+
+ARCHIVE_LOG_FAILED = {
+    'hourly_log': False,
+    'daily_log': False,
+    'monthly_log': False,
+}
