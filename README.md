@@ -32,9 +32,9 @@ License:
 A more detailed explanation about how to use this software can be obtained by sending me an email.
 
 More about the author:
-    APNIC: WAP1-AP
-    One of the founders of CyberPlus (PT Cyberplus Media Pratama - https://www.cyberplus.net.id/ - AS38771), an Internet Service Provider and IT System Integrator based in Bekasi, Indonesia since 2005.
-    Part-time CTO of CyberPlus.
-    Full-time Dad of ARP, RDP, NTP.
-    Former IT Senior Manager of a shipping company in Indonesia.
-    Former ICT Manager of a natural gas trader company.
+- APNIC: WAP1-AP
+- One of the founders of CyberPlus (PT Cyberplus Media Pratama - https://www.cyberplus.net.id/ - AS38771), an Internet Service Provider and IT System Integrator based in Bekasi, Indonesia since 2005.
+- Part-time CTO of CyberPlus.
+- Full-time Dad of ARP, RDP, NTP.
+- Former IT Senior Manager of a shipping company in Indonesia.
+- Former ICT Manager of a natural gas trader company.
