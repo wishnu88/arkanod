@@ -67,7 +67,9 @@ def app_exit(exit_val: int = 0):
     is_running = False
 
     try:
-        modbus_close(client)
+        # Only delete the MODBUS connection object if it is already initialized by the main process, not when the table creation procedure is invoked.
+        if len(sys.argv) == 1:
+            modbus_close(client)
         db_close(db_conn)
     except Exception as e:
         printLog('Error(s) occurred during exit: %s' % e, 'error')

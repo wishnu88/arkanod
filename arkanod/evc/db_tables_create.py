@@ -42,8 +42,9 @@ def init_create_tables(db_cur: object):
     
     table_errors = 0
 
-    def rollback_table(table_name: str):
+    def rollback_table(table_name: str, table_errors: int = table_errors):
         """ A simple procedure to drop the already created table. It requires only one keyword argument: table_name; str. """
+
         if index_failed > 0:
             db_cur.execute('DROP TABLE %s' % table_name)
             printLog("Rolling back create table %s." % table_name, 'error')
@@ -61,7 +62,7 @@ def init_create_tables(db_cur: object):
         # Create an operation table.
         create_table_exec(table_name, "CREATE TABLE %s " % table_name + OPER_TABLES[oper_table], db_cur)
 
-        # Create the needed index for an operation table.
+        # Create the needed index for an operation table, except for the update_check table.
         if oper_table == 'devices':
             try:
                 db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `unique_dev` (`mbmaster_name`,`slaveID`)' % table_name)
@@ -76,7 +77,8 @@ def init_create_tables(db_cur: object):
                 index_failed += 1
             else:
                 try:
-                    db_cur.execute(TRIGGER_REQ_DATALOG % (table_name, db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
+                    # Create a trigger for the update_check table when it is updated.
+                    db_cur.execute(TRIGGER_REQ_DATALOG % (db_config_detail[0]['tbl_prefix'], table_name, db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
                 
                 # Throw an error if the index creation fails.
                 except mariadb.Error as e:
@@ -119,7 +121,7 @@ def init_create_tables(db_cur: object):
         else:
             # Instead of creating an index, we create a trigger for the current_log table when it is updated.
             try:
-                db_cur.execute('CREATE TRIGGER `UPDATE_CHECK` AFTER UPDATE ON `%s` FOR EACH ROW UPDATE %s_update_check SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND Date_End IS NULL' % (table_name, db_config_detail[0]['tbl_prefix']))
+                db_cur.execute('CREATE TRIGGER `%s_UPDATE_CHECK` AFTER UPDATE ON `%s` FOR EACH ROW UPDATE %s_update_check SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND Date_End IS NULL' % (db_config_detail[0]['tbl_prefix'], table_name, db_config_detail[0]['tbl_prefix']))
 
             # Throw an error if the trigger creation fails.
             except:
@@ -131,7 +133,7 @@ def init_create_tables(db_cur: object):
 
     # Create a database event to obtain the EVC devices that are not updated.
     try:
-        db_cur.execute(EVENT_NOT_UPDATE_CHECK % (db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
+        db_cur.execute(EVENT_NOT_UPDATE_CHECK % (db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
     except:
         printLog("Failed to create event on database %s. Insufficient privilege?" % db_config_detail[0]['db_name'], 'error')
         table_errors += 1
