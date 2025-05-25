@@ -26,16 +26,22 @@ License:
     SOFTWARE.
 
 The danismod module MODBUS functions initialization file.
+Depend heavily on pyModbus.
 """
 
-import sys
-from pymodbus.constants import Endian
-from pymodbus.payload import BinaryPayloadDecoder
-from pymodbus.transaction import (ModbusRtuFramer, ModbusAsciiFramer, ModbusSocketFramer)
+def convert_registers(registers: list, swap_type: str = "none") -> object:
+    """
+    Swap the MODBUS response byte from the EVC device to the configured swap type.
 
-from danismod.funcs import printLog
+    Mandatory keyword argument:
+    registers: list; The MODBUS message response from configured registers.
 
-def convert_registers(registers, swap_type: str = "none"):
+    Optional keyword argument:
+    swap_type: str; Byte swap type of the MODBUS message responses (none, word, word_byte). Default: none.
+    """
+    from pymodbus.constants import Endian
+    from pymodbus.payload import BinaryPayloadDecoder
+
     if swap_type == 'word':
         byte_order = Endian.BIG
         word_order = Endian.LITTLE
@@ -47,7 +53,14 @@ def convert_registers(registers, swap_type: str = "none"):
 
     return BinaryPayloadDecoder.fromRegisters(registers, byte_order, wordorder=word_order) if swap_type != "none" else BinaryPayloadDecoder.fromRegisters(registers)
 
-def decode_results(results, data_type):
+def decode_results(results: object, data_type: str) -> object:
+    """
+    Decode the MODBUS response byte from the EVC device to the configured data type.
+
+    Mandatory keyword arguments:
+    results: object; The MODBUS object results returned from the EVC device.
+    data_type: str; The configured data type.
+    """
 
     if data_type == 'ignore':
         decoded = results.skip_bytes(8)
@@ -85,8 +98,23 @@ def decode_results(results, data_type):
 
     return decoded
 
-def mb_connect(type, port: str, host: str = None, mb_timeout: int = None):
+def mb_connect(type: str, port: str, host: str = None, mb_timeout: int = None):
+    """
+    Connect to the EVC device using the MODBUS protocol.
+
+    Mandatory keyword arguments:
+    type: str; The MODBUS protocol type (rtu, rtuovertcp, tcp).
+    port: str; The MODBUS TCP port of the EVC device.
+    host: str; The MODBUS TCP host name or IP of the EVC device. Usually used when type is rtuovertcp or tcp.
+
+    Optional keyword argument:
+    mb_timeout: int; The MODBUS response timeout in seconds. Default: None (pyModbus defined default).
+    """
+    import sys
+    from pymodbus.transaction import (ModbusRtuFramer, ModbusAsciiFramer, ModbusSocketFramer)
+
     from arkanod.evc.main import is_running
+    from danismod.funcs import printLog
 
     if is_running == False:
         return
@@ -115,6 +143,14 @@ def mb_connect(type, port: str, host: str = None, mb_timeout: int = None):
             printLog('Unable to establish connection to %s port %s.' % (host, port), 'error')
 
 def modbus_close(client: object):
+    """
+    A simple function to close a MODBUS connection.
+
+    Mandatory keyword argument:
+    client: object; The MODBUS connection variable.
+    """
+    from danismod.funcs import printLog
+
     if isinstance(client, object) and len(client) > 0:
         printLog("Disconnecting from Modbus devices...")
         for client_conn in client:

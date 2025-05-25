@@ -29,6 +29,15 @@ The danismod module general functions initialization file.
 """
 
 def printLog(msg: str, level: str = 'info'):
+    """
+    Log to STDOUT (or another channel in the future) with the configured log level.
+
+    Mandatory keyword argument:
+    msg: str; Message to be logged.
+
+    Optional keyword argument:
+    level: str; The log level (info, debug, error, critical). Default: info.
+    """
     import logging
 
     if logging.getLogger().hasHandlers():
@@ -44,10 +53,21 @@ def printLog(msg: str, level: str = 'info'):
         print(msg)
 
 def dt_utc_to_current(datetime_str: int, data_type: str = 'dt1'):
+    """
+    Convert the EVC device system date time to the database field datetime format.
+
+    Mandatory keyword argument:
+    datetime_str: str; The EVC device date time string.
+
+    Optional keyword argument:
+    data_type: str; The EVC device date time format type (dt1, dt2). Default: dt1.
+    """
+    import logging
     from datetime import datetime, timezone
 
     data_type = 'dt1' if data_type == 'dt2' and datetime_str == 0 else data_type
 
+    # Basically, dt1 is a UNIX timestamp, while dt2 is taken from Corus Evo+ default date time format.
     if data_type == 'dt1':
         return datetime.strptime(str(datetime.fromtimestamp(datetime_str, timezone.utc)), '%Y-%m-%d %H:%M:%S%z')
     elif data_type == 'dt2':             

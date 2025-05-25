@@ -29,12 +29,28 @@ The danismod module database functions initialization file.
 """
 
 def check_table_exists(table_name: str, db_name: str, db_cur: object) -> bool:
+    """
+    A simple function to check whether a table exists in a database.
+
+    Mandatory keyword arguments:
+    table_name: str; The table name to be checked.
+    db_name: str; The database name.
+    db_cur: object; The database cursor.
+    """
     db_cur.execute('SHOW TABLE STATUS FROM %s WHERE Name = ?' % db_name, [table_name])
     if db_cur.rowcount > 0:
         return True
     return False
 
 def create_table_exec(table_name: str, query: str, db_cur: object):
+    """
+    A simple function to execute a query template to create a table in a database.
+
+    Mandatory keyword arguments:
+    table_name: str; The table name to be created.
+    query: str; The database query template.
+    db_cur: object; The database cursor.
+    """
     from .funcs import printLog
     try:
         db_cur.execute(query)
@@ -45,6 +61,12 @@ def create_table_exec(table_name: str, query: str, db_cur: object):
         printLog('Table %s is successfully created.' % table_name)
 
 def db_close(db_conn: object):
+    """
+    A simple function to close a database connection.
+
+    Mandatory keyword argument:
+    db_conn: object; The database connection variable.
+    """
     from danismod.funcs import printLog
     if isinstance(db_conn, object):
         printLog("Closing MariaDB database...")

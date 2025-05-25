@@ -1,0 +1,8 @@
+- db_instance: instance_name
+  db_driver: mariadb
+  db_host: 127.0.0.1
+  # db_port: 
+  db_username: arkanod_db_user
+  db_password: "rahasia"
+  db_name: arkanod_database
+  tbl_prefix: arkanod

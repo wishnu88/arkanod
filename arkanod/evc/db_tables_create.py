@@ -28,13 +28,28 @@ License:
 The evc module create tables procedure file.
 """
 
-from .db_const import DATA_TYPE, OPER_TABLES, TRIGGER_REQ_DATALOG, EVENT_NOT_UPDATE_CHECK
-from danismod.db_funcs import check_table_exists, create_table_exec
-import mariadb
-
 def init_create_tables(db_cur: object):
+    """
+    The procedure to initiate the database tables. It is usually fired when --create-tables is called from the main program.
+
+    Mandatory keyword argument:
+    db_cur: object; The database cursor variable.
+    """
+    import mariadb
+    from .db_const import DATA_TYPE, OPER_TABLES, TRIGGER_REQ_DATALOG, EVENT_NOT_UPDATE_CHECK
+    from danismod.db_funcs import check_table_exists, create_table_exec
     from .main import db_config_detail, register_conversion_fields, mb_config_check_item, app_exit, printLog
+    
     table_errors = 0
+
+    def rollback_table(table_name: str):
+        """ A simple procedure to drop the already created table. It requires only one keyword argument: table_name; str. """
+        if index_failed > 0:
+            db_cur.execute('DROP TABLE %s' % table_name)
+            printLog("Rolling back create table %s." % table_name, 'error')
+            table_errors += 1
+
+    # Iterate through the available tables needed for runtime operation.
     for oper_table in OPER_TABLES:
         index_failed = 0
         table_name = db_config_detail[0]['tbl_prefix'] + '_' + oper_table
@@ -42,9 +57,11 @@ def init_create_tables(db_cur: object):
         if check_table_exists(table_name, db_config_detail[0]['db_name'], db_cur):
             printLog('Table %s is already exists, skipping.' % table_name)
             continue
-
+        
+        # Create an operation table.
         create_table_exec(table_name, "CREATE TABLE %s " % table_name + OPER_TABLES[oper_table], db_cur)
 
+        # Create the needed index for an operation table.
         if oper_table == 'devices':
             try:
                 db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `unique_dev` (`mbmaster_name`,`slaveID`)' % table_name)
@@ -60,15 +77,16 @@ def init_create_tables(db_cur: object):
             else:
                 try:
                     db_cur.execute(TRIGGER_REQ_DATALOG % (table_name, db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
+                
+                # Throw an error if the index creation fails.
                 except mariadb.Error as e:
                     printLog("Failed to create trigger for table %s: %s" % (table_name, e), 'error')
                     index_failed += 1
         
-        if index_failed > 0:
-            db_cur.execute('DROP TABLE %s' % table_name)
-            printLog("Rolling back create table %s." % table_name, 'error')
-            table_errors += 1
+        # Drop the table if the index creation fails.
+        rollback_table(table_name)
 
+    # Iterate through the available tables needed for saving the EVC logs.
     for log_table in register_conversion_fields:
         index_failed = 0
         table_name = db_config_detail[0]['tbl_prefix'] + '_' + log_table
@@ -78,38 +96,47 @@ def init_create_tables(db_cur: object):
             printLog('Table %s is already exists, skipping.' % table_name)
             continue
 
+        # Create an EVC log table creation query template, using the configured register_conversion items as the table fields.
         q_create_table = ("CREATE TABLE %s (`id` %sINT AUTO_INCREMENT PRIMARY KEY, deviceID INT NOT NULL, " % (table_name, 'BIG' if log_table == 'hourly_log' else ''))
         for item_field in register_conversion_fields[log_table]:
             if item_field['item'] not in fields_created:
                 fields_created.append(item_field['item'])
                 table_fields.append("`" + item_field['item'] + "` %s" % DATA_TYPE[item_field['data_type']])
         q_create_table += ", ".join(table_fields) + ", LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP()) ENGINE=" + ("InnoDB" if log_table != "current_log" else "MyISAM") + " DEFAULT CHARSET=utf8mb4"
+
+        # Create an EVC log table using the above query template.
         create_table_exec(table_name, q_create_table, db_cur)
 
+        # Create the needed index for an EVC log table, except for the current_log table.
         if log_table != "current_log":
             try:
                 db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `unique_log` (`deviceID`,`%s`)' % (table_name, mb_config_check_item[log_table]['log_time_regname']))
+
+            # Throw an error if the index creation fails.
             except:
                 printLog("Failed to create index for table %s. Insufficient privilege?" % table_name, 'error')
                 index_failed += 1
         else:
+            # Instead of creating an index, we create a trigger for the current_log table when it is updated.
             try:
                 db_cur.execute('CREATE TRIGGER `UPDATE_CHECK` AFTER UPDATE ON `%s` FOR EACH ROW UPDATE %s_update_check SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND Date_End IS NULL' % (table_name, db_config_detail[0]['tbl_prefix']))
+
+            # Throw an error if the trigger creation fails.
             except:
                 printLog("Failed to create trigger for table %s. Insufficient privilege?" % table_name, 'error')
                 index_failed += 1
 
-        if index_failed > 0:
-            db_cur.execute('DROP TABLE %s' % table_name)
-            printLog("Rolling back create table %s." % table_name, 'error')
-            table_errors += 1
+        # Drop the table if the index and/or trigger creation fails.
+        rollback_table(table_name)
 
+    # Create a database event to obtain the EVC devices that are not updated.
     try:
         db_cur.execute(EVENT_NOT_UPDATE_CHECK % (db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
     except:
         printLog("Failed to create event on database %s. Insufficient privilege?" % db_config_detail[0]['db_name'], 'error')
         table_errors += 1
 
+    # Throw a warning explaining that there is at least one table failed to be created.
     if table_errors > 0:
         printLog("WARNING: Not all table created successfully. Run this again after fixing the error(s).", 'error')
 

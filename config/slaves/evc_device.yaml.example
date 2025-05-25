@@ -1,0 +1,33 @@
+- type: rtuovertcp
+  host: 192.168.0.7
+  port: 8899
+  name: site1_evc
+  timeout_seconds: 5
+  wait_milliseconds: 50
+  current_log:
+    scan_interval_ms: 30000
+    evc_time_regname: EVCTime
+    debug: false
+    group_ids:
+    - 1
+  hourly_log:
+    log_time_regname: ArchiveTime
+    debug: false
+    max_retention: 1300
+    group_ids:
+    - 2
+  daily_log:
+    log_time_regname: ArchiveTime
+    debug: false
+    day_start_hour: 0
+    max_retention: 61
+    group_ids:
+    - 3
+  monthly_log:
+    log_time_regname: ArchiveTime
+    debug: false
+    max_retention: 24
+    group_ids:
+    - 4
+  register_group: !include Presets/register_group.yaml
+  register_conversion: !include Presets/evc_items.yaml
