@@ -1,0 +1,14 @@
+[Unit]
+Description=Arkanod Service to MODBUS poll EVC devices log
+Documentation=https://github.com/wishnu88/arkanod
+After=mosquitto.service
+
+[Service]
+Type=simple
+Restart=always
+WorkingDirectory=/opt/arkanos/arkanod
+ExecStart=/usr/bin/env python3 -m arkanod
+ExecReload=/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target
