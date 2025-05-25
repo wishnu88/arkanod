@@ -1,3 +1,4 @@
-config/*.yaml
-config/slaves/*.yaml
-config/slaves/Presets/*.yaml
+config/*
+!config/*.example
+!config/slaves/*.example
+!config/slaves/Presets/*.example
