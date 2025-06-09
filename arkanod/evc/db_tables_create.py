@@ -28,20 +28,31 @@ License:
 The evc module create tables procedure file.
 """
 
-def init_create_tables(db_cur: object):
+from danismod.db_funcs import *
+from .db_const import DATA_TYPE, OPER_TABLES, TRIGGER_REQ_DATALOG, EVENT_NOT_UPDATE_CHECK
+from danismod.funcs import printLog
+from main import app_exit
+
+def init_create_tables(db_params: dict, register_conversion_fields: dict, mb_config_check_item: dict):
     """
     The procedure to initiate the database tables. It is usually fired when --create-tables is called from the main program.
 
     Mandatory keyword argument:
     db_cur: object; The database cursor variable.
     """
-    import mariadb
-    from .db_const import DATA_TYPE, OPER_TABLES, TRIGGER_REQ_DATALOG, EVENT_NOT_UPDATE_CHECK
-    from danismod.db_funcs import check_table_exists, create_table_exec
-    from .main import db_config_detail, register_conversion_fields, mb_config_check_item, app_exit, printLog
-    
     table_errors = 0
+    db_conn_params = {
+        'host': db_params['db_host'],
+        'port': db_params['db_port'],
+        'user': db_params['db_username'],
+        'password': db_params['db_password'],
+        'database': db_params['db_name'],
+        'autocommit': True,
+        # 'reconnect': True
+    }
 
+    [Null, db_cur] = db_open(db_conn_params)
+    
     def rollback_table(table_name: str, table_errors: int = table_errors):
         """ A simple procedure to drop the already created table. It requires only one keyword argument: table_name; str. """
 
@@ -53,9 +64,9 @@ def init_create_tables(db_cur: object):
     # Iterate through the available tables needed for runtime operation.
     for oper_table in OPER_TABLES:
         index_failed = 0
-        table_name = db_config_detail[0]['tbl_prefix'] + '_' + oper_table
+        table_name = db_params['tbl_prefix'] + '_' + oper_table
 
-        if check_table_exists(table_name, db_config_detail[0]['db_name'], db_cur):
+        if check_table_exists(table_name, db_params['db_name'], db_cur):
             printLog('Table %s is already exists, skipping.' % table_name)
             continue
         
@@ -78,10 +89,10 @@ def init_create_tables(db_cur: object):
             else:
                 try:
                     # Create a trigger for the update_check table when it is updated.
-                    db_cur.execute(TRIGGER_REQ_DATALOG % (db_config_detail[0]['tbl_prefix'], table_name, db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
+                    db_cur.execute(TRIGGER_REQ_DATALOG % (db_params['tbl_prefix'], table_name, db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix']))
                 
                 # Throw an error if the index creation fails.
-                except mariadb.Error as e:
+                except Exception as e:
                     printLog("Failed to create trigger for table %s: %s" % (table_name, e), 'error')
                     index_failed += 1
         
@@ -91,10 +102,10 @@ def init_create_tables(db_cur: object):
     # Iterate through the available tables needed for saving the EVC logs.
     for log_table in register_conversion_fields:
         index_failed = 0
-        table_name = db_config_detail[0]['tbl_prefix'] + '_' + log_table
+        table_name = db_params['tbl_prefix'] + '_' + log_table
         fields_created = []
         table_fields = []
-        if check_table_exists(table_name, db_config_detail[0]['db_name'], db_cur):
+        if check_table_exists(table_name, db_params['db_name'], db_cur):
             printLog('Table %s is already exists, skipping.' % table_name)
             continue
 
@@ -121,7 +132,7 @@ def init_create_tables(db_cur: object):
         else:
             # Instead of creating an index, we create a trigger for the current_log table when it is updated.
             try:
-                db_cur.execute('CREATE TRIGGER `%s_UPDATE_CHECK` AFTER UPDATE ON `%s` FOR EACH ROW UPDATE %s_update_check SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND Date_End IS NULL' % (db_config_detail[0]['tbl_prefix'], table_name, db_config_detail[0]['tbl_prefix']))
+                db_cur.execute('CREATE TRIGGER `%s_UPDATE_CHECK` AFTER UPDATE ON `%s` FOR EACH ROW UPDATE %s_update_check SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND Date_End IS NULL' % (db_params['tbl_prefix'], table_name, db_params['tbl_prefix']))
 
             # Throw an error if the trigger creation fails.
             except:
@@ -133,9 +144,9 @@ def init_create_tables(db_cur: object):
 
     # Create a database event to obtain the EVC devices that are not updated.
     try:
-        db_cur.execute(EVENT_NOT_UPDATE_CHECK % (db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix'], db_config_detail[0]['tbl_prefix']))
-    except:
-        printLog("Failed to create event on database %s. Insufficient privilege?" % db_config_detail[0]['db_name'], 'error')
+        db_cur.execute(EVENT_NOT_UPDATE_CHECK % (db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix']))
+    except Exception as e:
+        printLog("Failed to create event on database %s: %s" % (db_params['db_name'], e), 'error')
         table_errors += 1
 
     # Throw a warning explaining that there is at least one table failed to be created.

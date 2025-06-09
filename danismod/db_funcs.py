@@ -28,6 +28,11 @@ License:
 The danismod module database functions initialization file.
 """
 
+import MySQLdb
+import threading
+from time import sleep
+from .funcs import printLog
+
 def check_table_exists(table_name: str, db_name: str, db_cur: object) -> bool:
     """
     A simple function to check whether a table exists in a database.
@@ -37,7 +42,7 @@ def check_table_exists(table_name: str, db_name: str, db_cur: object) -> bool:
     db_name: str; The database name.
     db_cur: object; The database cursor.
     """
-    db_cur.execute('SHOW TABLE STATUS FROM %s WHERE Name = ?' % db_name, [table_name])
+    db_cur.execute("SHOW TABLE STATUS FROM " + db_name + " WHERE Name = %s", (table_name,))
     if db_cur.rowcount > 0:
         return True
     return False
@@ -51,7 +56,6 @@ def create_table_exec(table_name: str, query: str, db_cur: object):
     query: str; The database query template.
     db_cur: object; The database cursor.
     """
-    from .funcs import printLog
     try:
         db_cur.execute(query)
     except Exception as e:
@@ -60,6 +64,20 @@ def create_table_exec(table_name: str, query: str, db_cur: object):
     else:
         printLog('Table %s is successfully created.' % table_name)
 
+def db_open(db_params: dict) -> list:
+    thread_name = threading.current_thread().getName()
+    db_conn = None
+    while db_conn == None:
+        try:
+            db_conn = MySQLdb.connect(**db_params)
+            db_cur = db_conn.cursor()
+            printLog("[%s] Database server CONNECTED." % thread_name)
+        except MySQLdb.Error as e:
+            printLog("[%s] ERROR connecting to the database: %s" % (thread_name, e), 'critical')
+            sleep(0.1)
+    
+    return [db_conn, db_cur]
+
 def db_close(db_conn: object):
     """
     A simple function to close a database connection.
@@ -67,8 +85,8 @@ def db_close(db_conn: object):
     Mandatory keyword argument:
     db_conn: object; The database connection variable.
     """
-    from danismod.funcs import printLog
+    thread_name = threading.current_thread().getName()
     if isinstance(db_conn, object):
-        printLog("Closing MariaDB database...")
+        printLog("[%s] Closing MariaDB database..." % thread_name)
         db_conn.close()
         del db_conn

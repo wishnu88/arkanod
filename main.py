@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Poll EVC (Electronic Volume Corrector) data and archive log periodically using the 0-based address MODBUS protocol.
@@ -31,28 +32,23 @@ The main application file.
 """
 
 # Import system dependencies.
-import mariadb
 import sys
-from signal import (signal as os_signal, SIGTERM, SIGINT, SIGHUP)
-from time import (sleep, time as millis)
-from datetime import timedelta
+from signal import signal as os_signal, SIGTERM, SIGINT, SIGHUP
+from time import sleep
+from glob import glob
 
 # Import custom build dependencies.
-from .const import *
+from arkanod.evc.const import *
+from arkanod.evc.device_read import *
 from danismod.yaml_include import *
-from danismod.funcs import printLog, dt_utc_to_current
-from danismod.mb_funcs import *
-from danismod.db_funcs import db_close
+from danismod.funcs import printLog
 
 # Variable initialization for storing configured group_ids.
 group_id_list = {}
 
-# Loop breaker variable initialization.
-is_running = True
-
 # Initialization of predefined constants and operation variables when --create-tables is called.
 if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
-    from .db_const import TRIGGER_REQ_DATALOG, EVENT_NOT_UPDATE_CHECK
+    from arkanod.evc.db_const import TRIGGER_REQ_DATALOG, EVENT_NOT_UPDATE_CHECK
     register_conversion_fields = {archive_log: [] for archive_log in ARCHIVE_LOG_LIST}
 
 def app_exit(exit_val: int = 0):
@@ -62,226 +58,37 @@ def app_exit(exit_val: int = 0):
     Optional keyword argument:
     exit_val: int; default to 0, means no error occurred while exiting, error indicated if it is greater than 0 (see UNIX exit status).
     """
-
-    global is_running
-    is_running = False
-
     try:
-        # Only delete the MODBUS connection object if it is already initialized by the main process, not when the table creation procedure is invoked.
-        if len(sys.argv) == 1:
-            modbus_close(client)
-        db_close(db_conn)
-    except Exception as e:
-        printLog('Error(s) occurred during exit: %s' % e, 'error')
-    finally:
-        printLog('Exited with error(s).' if exit_val > 0 else 'Graceful exit done.')   
+        printLog('Main thread exiting with error(s)...' if exit_val > 0 else 'Main thread is exiting...')   
         sys.exit(exit_val)
+    except Exception as e:
+        printLog('Error(s) occurred in main thread, right before exit: %s' % e, 'error')
 
-def signal_term_handler(signal, frame):
+
+def signal_term_handler(threads):
     """ Basic OS signal handler to control the runtime. """
-    if signal in [SIGTERM, SIGINT]:
-        app_exit()
-    elif signal == SIGHUP:
-        global app_stage
-        app_stage = 0
-
-def get_log_group_ids(register_group_ids: list) -> list:
-    """
-    Return list of every group_id MODBUS register address referenced in the configured EVC log.
-
-    Mandatory keyword argument:
-    register_group_ids: list; group_id list configured for the corresponding EVC log.
-    """
-
-    register_group_address = []
-
-    for register_group in mb_config_item['register_group']:
-
-        # Skip group_id not included in group_ids.
-        if register_group['group_id'] not in register_group_ids:
-            continue
-
-        register_group_address.append(register_group)
-
-    return register_group_address
-
-def get_evc_log(register_groups: list, slave_id: int = None) -> dict:
-    """
-    Get log items value fron EVC and return the dict of it.
-
-    Mandatory keyword argument:
-    register_groups: list; MODBUS register address groups configured for the corresponding EVC log.
-
-    Optional keyword argument:
-    slave_id: int; specify device ID of configured EVC. Must be specified when retrieving the EVC archive log.
-    """
-    global client
+    def handler(signal, frame):
+        for thread in threads:
+            if thread.is_alive():
+                thread.shutdown()
+        if signal in [SIGTERM, SIGINT]:
+            app_exit()
+        elif signal == SIGHUP:
+            # Ensure all threads are shut down gracefully.
+            while True:
+                live_threads = 0
+                for thread in threads:
+                    if thread.is_alive():
+                        live_threads += 1
+                
+                if live_threads == 0:
+                    # Start the main() again.
+                    main()
+                    return
     
-    register_group_address = {}
-    register_items = {}
-    register_slave_ids = {}
+    return handler
 
-    for register_group in register_groups:
-        
-        current_slave_id = int(register_group['slave'])
-        register_items[current_slave_id] = {}
-        if slave_id is not None and slave_id != current_slave_id:
-            continue
-        register_gap = 0 if 'gap' not in register_group else register_group['gap']
-
-        # Modbus read delay.
-        sleep((mb_config_item['wait_milliseconds'] / 1000))
-
-        try:
-            # Read from the EVC using MODBUS protocol.
-            if register_group['type'] == "input":
-                result = client[mb_config_item['name']].read_input_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
-            elif register_group['type'] == "holding":
-                result = client[mb_config_item['name']].read_holding_registers(int(register_group['address']) + register_gap, register_group['count'], slave=current_slave_id)
-        except:
-            # Throw an error when the EVC didn't response to MODBUS poll.
-            printLog('Unable to poll Modbus device on %s port %s with slave ID %s. Moving on...' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port'], register_group['slave']), 'error')
-            sleep(mb_config_item['timeout_seconds'])
-            continue
-
-        # Throw an error when no MODBUS register value is received from the EVC, although it responds to the MODBUS poll.
-        if hasattr(result, 'registers') == False:
-            printLog('Unexpected response from Modbus device on %s port %s with slave ID %s.' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port'], register_group['slave']), 'error')
-            sleep(mb_config_item['timeout_seconds'])
-            if client[mb_config_item['name']].connected == False:
-                printLog('Disconnected from %s port %s.' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port']), 'error')
-                client[mb_config_item['name']] = mb_connect(mb_config_item['type'], host=mb_config_item['host'], port=mb_config_item['port'], mb_timeout=mb_config_item['timeout_seconds'])
-                current_log_timers[mb_config_item['name']] = 0
-            break
-
-        # Map received MODBUS register value to the corresponding group_id address and count.
-        if len(result.registers) == register_group['count']:
-            register_addr_map = register_group['address'] + register_gap
-            register_group_values = {}
-            for result_map in result.registers:
-                register_group_values[register_addr_map] = result_map
-                register_addr_map = register_addr_map + 1
-        else:
-            continue
-
-        register_group_address[register_group['group_id']] = register_group_values    
-
-        # Convert MODBUS register value to the configured data type items.
-        for register_conversion in mb_config_item['register_conversion']:
-            group_exists = 0
-            for group_id in register_conversion['group_ids']:
-                if group_id == register_group['group_id']:
-                    group_exists = 1
-                    break
-            
-            if group_exists == 0:
-                continue
-
-            current_registers = []
-            register_value_precision = 0 if 'precision' not in register_conversion else register_conversion['precision']
-
-            for register_i in range(int(register_conversion['registers'][0]) + register_gap, int(register_conversion['registers'][1]) + register_gap + 1):
-                try:
-                    current_registers.append(register_group_address[register_group['group_id']][register_i])
-                except:
-                    continue
-
-            if len(current_registers) > 0:
-                register_value = decode_results(current_registers if register_conversion['data_type'] in ['dt1', 'dt2'] else convert_registers(current_registers, register_conversion['swap'] if 'swap' in register_conversion else None), register_conversion['data_type'])
-                register_items[current_slave_id][register_conversion['name']] = round(register_value, register_value_precision) if register_value_precision != "none" else register_value
-                register_slave_ids[register_conversion['name']] = current_slave_id
-
-    # Return the dict of already converted MODBUS registers data type along with the mapped device ID.
-    return {'items': register_items if slave_id is None else register_items[slave_id], 'slaveIDs': register_slave_ids}
-
-def send_archive_log(device_id: int, group_ids: list, kind: str, retention: int = 0, slave_id: int = 1) -> dict:
-    """
-    Send the received EVC archive log values to the database (or STDOUT for debugging purposes).
-
-    Mandatory keyword arguments:
-    device_id: int; Device ID retrieved from the database for each EVC device.
-    groups_ids: list; List of the configured group_id for the corresponding EVC archive log.
-    kind: str; Archive log kind (usually one of this: hourly, daily, monthly).
-
-    Optional keyword arguments:
-    retention: int; The count of retention of the backlog EVC archive log from the newest to the oldest data. Default: 0.
-    slave_id: int; The EVC device MODBUS slave ID. Default: 1.
-    """
-    success_status = 0
-
-    if kind in ARCHIVE_LOG_LIST:
-        # Get the configured group_id for the corresponding EVC archive log.
-        archive_log_group_ids = get_log_group_ids(group_ids)
-        
-        all_archive_log_items = []
-
-        # Iterate once if no/zero retention is specified.
-        for n_iter in range(0 if retention == 0 else 1, retention + 1):
-            if retention > 0:
-                for group_id_index in range(0, len(archive_log_group_ids)):
-                    archive_log_group_ids[group_id_index]['gap'] = n_iter * archive_log_group_ids[group_id_index]['count']
-
-            # MODBUS poll the EVC device.
-            archive_log_items = get_evc_log(archive_log_group_ids, slave_id)['items']
-
-            # Send the received MODBUS responses to STDOUT for debugging purposes only.
-            if mb_config_item[kind]['debug'] is True:
-                print(archive_log_items)
-
-            if retention > 0:
-                for group_id_index in range(0, len(archive_log_group_ids)):
-                    del archive_log_group_ids[group_id_index]['gap']
-
-            try:
-                # Insert the received MODBUS responses (EVC archive log items value) into the database; otherwise, throw an error.
-                q_insert_archive = "INSERT IGNORE INTO %s (deviceID, %s) VALUES (%s)s)" % (db_config_detail[0]['tbl_prefix'] + '_' + kind, ', '.join(archive_log_items), str(device_id) + ", %(" + ")s, %(".join([item_name for item_name in archive_log_items]))               
-                db_cur.execute(q_insert_archive, archive_log_items)
-                if db_cur.rowcount > 0:
-                    all_archive_log_items.append(archive_log_items)
-            except Exception as e:
-                printLog(e, 'error')
-                if retention == 0:
-                    success_status = 2
-            else:
-                if retention == 0:
-                    success_status = 1
-        
-        # Return the EVC archive log items value along with the general success status.
-        return {'items': all_archive_log_items, 'status': success_status}
-
-def send_current_log(device_id: int, items: dict = None, insert_log: bool = False) -> bool:
-    """
-    Send the received EVC current/instantaneous log values to the database (or STDOUT for debugging purposes).
-
-    Mandatory keyword argument:
-    device_id: int; Device ID retrieved from the database for each EVC device.
-
-    Optional keyword arguments:
-    items: dict; The dict of item list of the EVC current log to be retrieved. Default: None.
-    insert_log: bool; Whether to insert a new record for a newly connected EVC device or not. Default: False.
-    """
-    if insert_log == True:
-        try:
-            q_insert_current = "INSERT INTO %s_current_log (deviceID) VALUES (?)" % db_config_detail[0]['tbl_prefix']
-            db_cur.execute(q_insert_current, (device_id,))
-        except:
-            return False
-    else:
-        try:
-            # Create the current log query template using dictionary.
-            q_update_current_log = "UPDATE %s_current_log SET " % db_config_detail[0]['tbl_prefix']
-            q_update_items = []
-            for item_name in items:
-                q_update_items.append("%s = %%(%s)s" % (item_name, item_name))
-            q_update_current_log += ", ".join(q_update_items) + " WHERE deviceID = %s" % device_id
-
-            db_cur.execute(q_update_current_log, items)
-        except Exception as e:
-            printLog(e, 'error')
-            return False
-    return True
-
-def register_group_paramcheck(param_name: str, grp_item_index: int):
+def register_group_paramcheck(param_name: str, grp_item_index: int, register_group_item: dict, mb_config_check_item: dict, item_index: int):
     """
     Sanity check a parameter in a particular register_group member.
     It also checks whether this register_group member is configured in any of the configured EVC logs.
@@ -290,7 +97,7 @@ def register_group_paramcheck(param_name: str, grp_item_index: int):
     param_name: str; The register_group parameter name.
     grp_item_index: int; Index number from the list of register_group members.
     """
-    global mb_config_check_item, error_len, register_group_item
+    global error_len
 
     log_types = ARCHIVE_LOG_LIST[:]
     log_types.append('current_log')
@@ -319,7 +126,7 @@ def register_group_paramcheck(param_name: str, grp_item_index: int):
         printLog('[Item %s - register_group - Group Item %s] Unable to find %s settings.' % (item_index, grp_item_index, param_name), 'error')
         error_len = error_len + 1
 
-def register_conversion_paramcheck(param_name: str, conversion_item_index: int):
+def register_conversion_paramcheck(param_name: str, conversion_item_index: int, mb_config_check_item: dict, register_conversion_item: dict, mb_config_detail: dict, item_index: int):
     """
     Sanity check a parameter in a particular register_conversion member.
     It also checks whether this register_conversion member is configured in any of the configured register_groups.
@@ -328,7 +135,7 @@ def register_conversion_paramcheck(param_name: str, conversion_item_index: int):
     param_name: str; The register_conversion parameter name.
     conversion_item_index: int; Index number from the list of register_conversion members.
     """
-    global mb_config_check_item, error_len, register_conversion_item, mb_config_detail
+    global error_len
 
     # Sanity check for name, group_id, registers, data_type, swap, precision settings.
     if param_name in register_conversion_item:
@@ -381,24 +188,50 @@ def register_conversion_paramcheck(param_name: str, conversion_item_index: int):
                 error_len = error_len + 1
     else:
         if param_name == 'precision':
-            printLog('[Item %s - register_conversion - Conversion Item %s] Unable to find %s settings for conversion name %s. Defaulting to none.' % (item_index, conversion_item_index, 'precision', register_conversion_item['name']))
+            printLog('[Item %s - register_conversion - Conversion Item %s] Unable to find %s settings for conversion name %s. Defaulting to none.' % (item_index, conversion_item_index, 'precision', register_conversion_item['name']), 'debug')
             mb_config_detail[item_index]['register_conversion'][conversion_item_index]['precision'] = 'none'
         else:
             printLog('[Item %s - register_conversion - Conversion Item %s] Unable to find %s settings.' % (item_index, conversion_item_index, param_name), 'error')
             error_len = error_len + 1
 
-# Register some OS signals received to be processed by the configured handler.
-for current_os_signal in [SIGINT, SIGHUP, SIGTERM]:
-    os_signal(current_os_signal, signal_term_handler)
+def db_config_check():
+    global error_len
 
-# Runtime control/switcher variable.
-app_stage = 0
+    # Read <base_dir>/config/db.yaml file for database configuration. Will be supporting multiple databases and DBMS in the future.
+    with open('config/db.yaml', 'r') as db_config:
+        printLog('Loading MariaDB database settings from config/db.yaml...')
+        db_config_check = db_config_detail = yaml.safe_load(db_config)
 
-# Outer program loop. Still not the main loop yet, but breaking from this loop will result in the complete termination of this program.
-while is_running:
+        # START - DB config sanity check and default value.
 
-    if 'glob' not in sys.modules:
-        from glob import glob
+        if len(db_config_check) > 0:
+            
+            for db_item_index, db_instance in enumerate(db_config_check):
+                for db_param_name in ['db_instance','db_host','db_username','db_password','db_name']:
+                    if db_param_name not in db_instance:
+                        printLog('[DB Item %s] Unable to find %s settings' + ' for instance %s' if db_param_name != 'db_instance' else '' + '.' % (db_item_index, db_param_name, db_instance['db_instance'] if db_param_name != 'db_instance' else None), 'error')
+                        error_len = error_len + 1
+                    elif db_param_name in db_instance and db_instance[db_param_name] == "":
+                        printLog('[DB Item %s] Invalid %s settings' + ' for instance %s' if db_param_name != 'db_instance' else '' + '.' % (db_item_index, db_param_name, db_instance['db_instance'] if db_param_name != 'db_instance' else None), 'error')
+                        error_len = error_len + 1
+
+                if 'db_port' not in db_instance:
+                    printLog('[DB Item %s] Unable to find db_port settings. Assuming TCP/3306 as the DB port.' % db_item_index, 'debug')
+                    db_config_detail[db_item_index]['db_port'] = 3306
+                elif 'db_port' in db_instance:
+                    if (isinstance(db_instance['db_port'], int) and (db_instance['db_port'] < 1 or db_instance['db_port'] > 65535)) or isinstance(db_instance['db_port'], int) == False:
+                        printLog('[DB Item %s] Invalid db_port settings.' % db_item_index, 'error')
+                        error_len = error_len + 1
+
+        if error_len > 0:
+            app_exit(1)
+        else:
+            printLog('MariaDB database settings loaded successfully.')
+            return db_config_detail
+        # END - DB config sanity check and default value.
+
+def main():
+    global error_len
 
     mb_config_detail = []
     mb_config_files = 0
@@ -416,7 +249,7 @@ while is_running:
         # START - Modbus config sanity check and default value.
 
         error_len = 0
-
+        evctime_reg = {}
         for item_index, mb_config_check_item in enumerate(mb_config_check_all):
 
             # START - Sanity check for type, port and host settings.
@@ -620,7 +453,7 @@ while is_running:
                                                 'address',
                                                 'count',
                                                 'type']:
-                            register_group_paramcheck(param_name, grp_item_index)
+                            register_group_paramcheck(param_name = param_name, grp_item_index = grp_item_index, register_group_item=register_group_item, mb_config_check_item=mb_config_check_item, item_index=item_index)
                         # END - Sanity check for group_id, slave, address, count, type settings.
                 else:
                     printLog('[Item %s] Invalid register_group settings (register_group: ). It should be a list.' % item_index, 'error')
@@ -645,10 +478,10 @@ while is_running:
                                             'data_type',
                                             'swap',
                                             'precision']:
-                            register_conversion_paramcheck(param_name, grp_item_index)
+                            register_conversion_paramcheck(param_name=param_name, conversion_item_index=grp_item_index, mb_config_check_item=mb_config_check_item, register_conversion_item=register_conversion_item, mb_config_detail=mb_config_detail, item_index=item_index)
 
-                        if 'evctime_reg' not in vars() and register_conversion_item['name'] == mb_config_check_item['current_log']['evc_time_regname']:
-                            evctime_reg = {
+                        if register_conversion_item['name'] == mb_config_check_item['current_log']['evc_time_regname']:
+                            evctime_reg[mb_config_check_item['name']] = {
                                 'name': register_conversion_item['name'],
                                 'data_type': register_conversion_item['data_type']
                             }
@@ -699,195 +532,45 @@ while is_running:
 
     # END - Modbus config sanity check and default value.
 
-    # Read <base_dir>/config/db.yaml file for database configuration. Will be supporting multiple databases and DBMS in the future.
-    with open('config/db.yaml', 'r') as db_config:
-        printLog('Loading MariaDB database settings from config/db.yaml...')
-        db_config_check = db_config_detail = yaml.safe_load(db_config)
+    db_params = db_config_check()
 
-        # START - DB config sanity check and default value.
+    # START -- Create tables if --create-tables argument is passed.
+    if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
+        from arkanod.evc.db_tables_create import init_create_tables
+        init_create_tables(db_params[0], register_conversion_fields, mb_config_check_item)
+        return
+    # END -- Create tables if --create-tables argument is passed.
 
-        if len(db_config_check) > 0:
-            
-            for db_item_index, db_instance in enumerate(db_config_check):
-                for db_param_name in ['db_instance','db_host','db_username','db_password','db_name']:
-                    if db_param_name not in db_instance:
-                        printLog('[DB Item %s] Unable to find %s settings' + ' for instance %s' if db_param_name != 'db_instance' else '' + '.' % (db_item_index, db_param_name, db_instance['db_instance'] if db_param_name != 'db_instance' else None), 'error')
-                        error_len = error_len + 1
-                    elif db_param_name in db_instance and db_instance[db_param_name] == "":
-                        printLog('[DB Item %s] Invalid %s settings' + ' for instance %s' if db_param_name != 'db_instance' else '' + '.' % (db_item_index, db_param_name, db_instance['db_instance'] if db_param_name != 'db_instance' else None), 'error')
-                        error_len = error_len + 1
+    # MODBUS device threads start here.
+    threads = []
 
-                if 'db_port' not in db_instance:
-                    printLog('[DB Item %s] Unable to find db_port settings. Assuming TCP/3306 as the DB port.' % db_item_index)
-                    db_config_detail[db_item_index]['db_port'] = 3306
-                elif 'db_port' in db_instance:
-                    if (isinstance(db_instance['db_port'], int) and (db_instance['db_port'] < 1 or db_instance['db_port'] > 65535)) or isinstance(db_instance['db_port'], int) == False:
-                        printLog('[DB Item %s] Invalid db_port settings.' % db_item_index, 'error')
-                        error_len = error_len + 1
+    # Register some OS signals received to be processed by the configured handler.
+    for current_os_signal in [SIGINT, SIGHUP, SIGTERM]:
+        os_signal(current_os_signal, signal_term_handler(threads=threads))
 
-        if error_len > 0:
-            app_exit(1)
-        else:
-            printLog('MariaDB database settings loaded successfully.')
-
-            # Delete all unneeded variables after the sanity check is done.
-            del db_config_check, error_len
-
-        # END - DB config sanity check and default value.
-
-        try:
-            db_conn = mariadb.connect(
-                host=db_config_detail[0]['db_host'],
-                port=db_config_detail[0]['db_port'],
-                user=db_config_detail[0]['db_username'],
-                password=db_config_detail[0]['db_password'],
-                database=db_config_detail[0]['db_name'],
-                autocommit=True,
-                reconnect=True)
-
-            # Instantiate MariaDB Cursor.
-            db_cur = db_conn.cursor()
-
-        # Throw an error if it cannot connect and/or open the database.
-        except mariadb.Error as e:
-            printLog(f"Error connecting to the database: {e}", 'critical')
-            app_exit(1)
-
-        # START -- Create tables if --create-tables argument is passed.
-        if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
-            from .db_tables_create import init_create_tables
-            init_create_tables(db_cur)
-        # END -- Create tables if --create-tables argument is passed.
-
-    current_log_timers = {}
+    # MODBUS poll each EVC device ID
     for mb_config_item in mb_config_detail:
-        current_log_timers[mb_config_item['name']] = 0
+        thread = device_read(mb_config_item, evctime_reg[mb_config_item['name']], db_params[0])
+        thread.name = mb_config_item['name']
+        threads.append(thread)
+        thread.start()
+    
+    while True:
+        live_threads = 0
+        for thread in threads:
+            if thread.is_alive():
+                live_threads += 1
+                thread.join()
+        
+        if live_threads == 0:
+            return
 
-    client = {}
-    current_device_id = {}
-    last_dtu = {}
-
-    # Runtime switch to main program loop for periodically polling the EVC devices.
-    app_stage = 1
-
-    # Main program loop. Breaking from this loop will surely terminate this program completely, unless a runtime switch occurs.
-    while app_stage == 1:
-
-        # MODBUS poll each EVC device ID
-        for mb_config_item in mb_config_detail:
-            if mb_config_item['name'] not in client or (mb_config_item['name'] in client and hasattr(client[mb_config_item['name']], 'connected') and client[mb_config_item['name']].connected == False):
-
-                if mb_config_item['name'] in client:
-                    printLog('Disconnected from %s port %s.' % (mb_config_item['host'] if 'host' in mb_config_item else 'local', mb_config_item['port']), 'error')
-                
-                client[mb_config_item['name']] = mb_connect(mb_config_item['type'], host=mb_config_item['host'], port=mb_config_item['port'], mb_timeout=mb_config_item['timeout_seconds'])
-
-            # Poll the EVC device when the current log scan time deadline is met.
-            if round(millis()*1000) - current_log_timers[mb_config_item['name']] >= int(mb_config_item['current_log']['scan_interval_ms']) and client[mb_config_item['name']].connected == True and is_running == True:
-
-                # Reset timer, waiting for the next cycle.
-                current_log_timers[mb_config_item['name']] = round(millis()*1000)
-
-                if mb_config_item['name'] not in last_dtu:
-                    last_dtu[mb_config_item['name']] = 0
-
-                current_log_group_ids = get_log_group_ids(mb_config_item['current_log']['group_ids'])
-                current_log_items = get_evc_log(current_log_group_ids)
-
-                all_register_items = current_log_items['items']
-
-                for current_slave_id in all_register_items:
-                    register_items = all_register_items[current_slave_id]
-
-                    if mb_config_item['current_log']['debug'] is True:
-                        print(register_items)
-
-                    if len(register_items) > 0:
-                        if mb_config_item['name'] not in current_device_id:
-                            q_get_device_id = "SELECT id FROM %s_devices WHERE mbmaster_name = ? AND slaveID = ? LIMIT 1" % db_config_detail[0]['tbl_prefix']
-                            db_cur.execute(q_get_device_id, (mb_config_item['name'], current_slave_id))
-
-                            if db_cur.rowcount == 0:
-                                db_cur.execute("INSERT INTO %s_devices (`mbmaster_name`, `slaveID`) VALUES (?, ?)" % db_config_detail[0]['tbl_prefix'], (mb_config_item['name'], current_slave_id))
-                                continue
-
-                            rows_device_id = db_cur.fetchone()
-
-                            current_device_id[mb_config_item['name']] = rows_device_id[0]
-                            q_get_current = "SELECT id FROM %s_current_log WHERE deviceID = ?" % db_config_detail[0]['tbl_prefix']
-                            db_cur.execute(q_get_current, (current_device_id[mb_config_item['name']],))
-
-                            if db_cur.rowcount == 0:
-                                send_current_log(current_device_id[mb_config_item['name']], insert_log=True)
-
-                        # MODBUS poll to the EVC device
-                        send_current_log(current_device_id[mb_config_item['name']], register_items)
-
-                        if evctime_reg['name'] in register_items:
-                            last_dtu_str = dt_utc_to_current(last_dtu[mb_config_item['name']], evctime_reg['data_type'])
-                            current_dtu_str = dt_utc_to_current(register_items[evctime_reg['name']], evctime_reg['data_type'])
-
-                            # Get hourly log when EVC hour has changed.
-                            if (last_dtu_str.hour != current_dtu_str.hour or ARCHIVE_LOG_FAILED['hourly_log'] == True) and ARCHIVE_LOG_ENABLED['hourly_log'] == True:
-                                if send_archive_log(current_device_id[mb_config_item['name']], mb_config_item['hourly_log']['group_ids'], 'hourly_log')['status'] != 1:
-                                    ARCHIVE_LOG_FAILED['hourly_log'] = True
-                                else:
-                                    ARCHIVE_LOG_FAILED['hourly_log'] = False if ARCHIVE_LOG_FAILED['hourly_log'] == True else ARCHIVE_LOG_FAILED['hourly_log']
-
-                            # Substract the last current time of the EVC device by the configured day_start_hour, only if day_start_hour > 0, for the relativity effect of the daily log and the monthly log.
-                            if mb_config_item['daily_log']['day_start_hour'] > 0:
-                                last_dtu_str -= timedelta(hours=mb_config_item['daily_log']['day_start_hour'])
-                                current_dtu_str -= timedelta(hours=mb_config_item['daily_log']['day_start_hour'])
-
-                            # Get daily log when EVC day has changed.
-                            if (last_dtu_str.day != current_dtu_str.day or ARCHIVE_LOG_FAILED['daily_log'] == True) and ARCHIVE_LOG_ENABLED['daily_log'] == True:
-                                if send_archive_log(current_device_id[mb_config_item['name']], mb_config_item['daily_log']['group_ids'], 'daily_log')['status'] != 1:
-                                    ARCHIVE_LOG_FAILED['daily_log'] = True
-                                else:
-                                    ARCHIVE_LOG_FAILED['daily_log'] = False if ARCHIVE_LOG_FAILED['daily_log'] == True else ARCHIVE_LOG_FAILED['daily_log']
-
-                            # Get monthly log when EVC month has changed.
-                            if (last_dtu_str.month != current_dtu_str.month or ARCHIVE_LOG_FAILED['monthly_log'] == True) and ARCHIVE_LOG_ENABLED['monthly_log'] == True:
-                                if send_archive_log(current_device_id[mb_config_item['name']], mb_config_item['monthly_log']['group_ids'], 'monthly_log')['status'] != 1:
-                                    ARCHIVE_LOG_FAILED['monthly_log'] = True
-                                else:
-                                    ARCHIVE_LOG_FAILED['monthly_log'] = False if ARCHIVE_LOG_FAILED['monthly_log'] == True else ARCHIVE_LOG_FAILED['monthly_log']
-
-                            # Add the last current time of the EVC device by the configured day_start_hour, only if day_start_hour > 0, to reverse the relativity effect above.
-                            if mb_config_item['daily_log']['day_start_hour'] > 0:
-                                last_dtu_str += timedelta(hours=mb_config_item['daily_log']['day_start_hour'])
-                                current_dtu_str += timedelta(hours=mb_config_item['daily_log']['day_start_hour'])
-
-                            # START - Check Request Log.
-                            q_check_request_log = "SELECT id, archiveLog, logRetention FROM %s_request_log WHERE deviceID = ? AND requestStatus = 0 AND archiveLog >= 0 AND archiveLog < ?" % db_config_detail[0]['tbl_prefix']
-                            db_cur.execute(q_check_request_log, (current_device_id[mb_config_item['name']], len(ARCHIVE_LOG_LIST)))
-
-                            if db_cur.rowcount > 0:
-                                rows_request_log = db_cur.fetchall()
-                                for row_request_log in rows_request_log:
-                                    if row_request_log[2] <= mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['max_retention'] and ARCHIVE_LOG_ENABLED[ARCHIVE_LOG_LIST[row_request_log[1]]] == True:
-                                        if len(send_archive_log(current_device_id[mb_config_item['name']], mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['group_ids'], ARCHIVE_LOG_LIST[row_request_log[1]], row_request_log[2])['items']) > 0:
-                                            q_request_log_status = 1
-                                        else:
-                                            q_request_log_status = 2
-                                    else:
-                                        q_request_log_status = 2
-
-                                    q_update_request_log = "UPDATE %s_request_log SET requestStatus = ? WHERE id = ?" % db_config_detail[0]['tbl_prefix']
-                                    db_cur.execute(q_update_request_log, (q_request_log_status, row_request_log[0]))
-                            # END - Check Request Log.
-
-                            # Time mark for the last EVC current log MODBUS poll.
-                            last_dtu[mb_config_item['name']] = register_items[evctime_reg['name']]
         try:
             sleep(0.1)
-        except KeyboardInterrupt:
-            app_exit()
+        except:
+            for thread in threads:
+                thread.shutdown()
+            return
 
-    try:
-        modbus_close(client)
-        db_close(db_conn)
-    except Exception as e:
-        printLog('Error(s) occurred during exit: %s' % e, 'error')
-    finally:
-        pass
+if __name__ == '__main__':
+    main()

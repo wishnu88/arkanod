@@ -28,8 +28,32 @@ License:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
-
+Tested in MacOS Sequoia 15.5 and Debian GNU/Linux 12 (should be no issue in any other available Linux distros).
 A more detailed explanation about how to use this software can be obtained by sending me an email.
+
+## Prerequisites
+- Python 3.9+
+- Python mysqlclient library
+- Follow the steps in https://pypi.org/project/mysqlclient/ to install the Python mysqlclient library first (omit the "pip install..")
+
+## Install Steps
+1. **Clone the repository**
+```bash
+mkdir /opt/arkanos
+cd /opt/arkanos
+git clone https://github.com/wishnu88/arkanod.git
+cd arkanod
+```
+2. **Install dependencies**  
+```bash
+pip3 install -r requirements.txt
+```
+3. **Install systemd script (Debian/Ubuntu only)**  
+```bash
+cp init-scripts/systemd/arkanod.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable arkanod.service
+```
 
 More about the author:
 - APNIC: WAP1-AP

@@ -39,6 +39,14 @@ def printLog(msg: str, level: str = 'info'):
     level: str; The log level (info, debug, error, critical). Default: info.
     """
     import logging
+    from arkanod.evc.const import LOG_LEVEL
+
+    severity = {
+        'critical': 0,
+        'error': 1,
+        'info': 2,
+        'debug': 3
+    }
 
     if logging.getLogger().hasHandlers():
         if level == 'info':
@@ -50,7 +58,8 @@ def printLog(msg: str, level: str = 'info'):
         elif level == 'critical':
             logging.critical(msg)
     else:
-        print(msg)
+        if severity[level] <= LOG_LEVEL:
+            print(msg, flush=True)
 
 def dt_utc_to_current(datetime_str: int, data_type: str = 'dt1'):
     """

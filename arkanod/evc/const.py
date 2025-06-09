@@ -84,3 +84,5 @@ ARCHIVE_LOG_FAILED = {
     'daily_log': False,
     'monthly_log': False,
 }
+
+LOG_LEVEL = 2

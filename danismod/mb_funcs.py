@@ -29,74 +29,11 @@ The danismod module MODBUS functions initialization file.
 Depend heavily on pyModbus.
 """
 
-def convert_registers(registers: list, swap_type: str = "none") -> object:
-    """
-    Swap the MODBUS response byte from the EVC device to the configured swap type.
+import sys
+import threading
+from pymodbus import FramerType
 
-    Mandatory keyword argument:
-    registers: list; The MODBUS message response from configured registers.
-
-    Optional keyword argument:
-    swap_type: str; Byte swap type of the MODBUS message responses (none, word, word_byte). Default: none.
-    """
-    from pymodbus.constants import Endian
-    from pymodbus.payload import BinaryPayloadDecoder
-
-    if swap_type == 'word':
-        byte_order = Endian.BIG
-        word_order = Endian.LITTLE
-    elif swap_type == 'word_byte':
-        byte_order = word_order = Endian.BIG
-    else:
-        byte_order = Endian.LITTLE
-        word_order = Endian.BIG
-
-    return BinaryPayloadDecoder.fromRegisters(registers, byte_order, wordorder=word_order) if swap_type != "none" else BinaryPayloadDecoder.fromRegisters(registers)
-
-def decode_results(results: object, data_type: str) -> object:
-    """
-    Decode the MODBUS response byte from the EVC device to the configured data type.
-
-    Mandatory keyword arguments:
-    results: object; The MODBUS object results returned from the EVC device.
-    data_type: str; The configured data type.
-    """
-
-    if data_type == 'ignore':
-        decoded = results.skip_bytes(8)
-    elif data_type == 'bits':
-        decoded = results.decode_bits()
-    elif data_type == 'float16':
-        decoded = results.decode_16bit_float()
-    elif data_type == 'float32':
-        decoded = results.decode_32bit_float()
-    elif data_type == 'float64':
-        decoded = results.decode_64bit_float()
-    elif data_type == 'int8':
-        decoded = results.decode_8bit_int()
-    elif data_type == 'int16':
-        decoded = results.decode_16bit_int()
-    elif data_type == 'int32':
-        decoded = results.decode_32bit_int()
-    elif data_type == 'int64':
-        decoded = results.decode_64bit_int()
-    elif data_type == 'string':
-        decoded = results.decode_string()
-    elif data_type == 'uint8':
-        decoded = results.decode_8bit_uint()
-    elif data_type == 'uint16':
-        decoded = results.decode_16bit_uint()
-    elif data_type == 'uint32':
-        decoded = results.decode_32bit_uint()
-    elif data_type == 'uint64':
-        decoded = results.decode_64bit_uint()
-    elif data_type == 'dt1':
-        decoded = results.decode_32bit_uint()
-    elif data_type == 'dt2':
-        hex_values = ["{:04x}".format(register) for register in results]
-        decoded = "".join(hex_values)
-
-    return decoded
+from danismod.funcs import printLog
 
 def mb_connect(type: str, port: str, host: str = None, mb_timeout: int = None):
     """
@@ -110,50 +47,79 @@ def mb_connect(type: str, port: str, host: str = None, mb_timeout: int = None):
     Optional keyword argument:
     mb_timeout: int; The MODBUS response timeout in seconds. Default: None (pyModbus defined default).
     """
-    import sys
-    from pymodbus.transaction import (ModbusRtuFramer, ModbusAsciiFramer, ModbusSocketFramer)
-
-    from arkanod.evc.main import is_running
-    from danismod.funcs import printLog
-
-    if is_running == False:
-        return
+    thread_name = threading.current_thread().getName()
 
     if type in ['rtuovertcp','tcp']:        
         try:
-            printLog("Connecting to %s port %s..." % (host, port))
+            printLog("[%s] Connecting to %s port %s..." % (thread_name, host, port))
             if 'ModbusTcpClient' not in sys.modules:
                 from pymodbus.client import ModbusTcpClient
-            client = ModbusTcpClient(host=host, port=int(port), framer=ModbusRtuFramer if type == 'rtu' or type == 'rtuovertcp' else ModbusSocketFramer if type == 'tcp' else ModbusAsciiFramer, timeout=mb_timeout)
+            client = ModbusTcpClient(host=host, port=int(port), framer=FramerType.RTU if type == 'rtu' or type == 'rtuovertcp' else FramerType.SOCKET if type == 'tcp' else FramerType.ASCII, timeout=mb_timeout)
             client.connect()
-            printLog("Connected succesfully to %s port %s!" % (host, port))
+            printLog("[%s] Connected succesfully to %s port %s!" % (thread_name, host, port))
             return client
         except:
-            printLog('Unable to establish connection to %s port %s.' % (host, port), 'error')
+            printLog('[%s] Unable to establish connection to %s port %s.' % (thread_name, host, port), 'error')
     elif type == 'rtu':        
         try:
-            printLog("Connecting to port %s..." % port)
+            printLog("[%s] Connecting to port %s..." % (thread_name, port))
             if 'ModbusSerialClient' not in sys.modules:
                 from pymodbus.client import ModbusSerialClient
-            client = ModbusSerialClient(port=port, framer=ModbusRtuFramer if type == 'rtu' or type == 'rtuovertcp' else ModbusSocketFramer if type == 'tcp' else ModbusAsciiFramer, timeout=mb_timeout)
+            client = ModbusSerialClient(port=port, framer=FramerType.RTU if type == 'rtu' or type == 'rtuovertcp' else FramerType.SOCKET if type == 'tcp' else FramerType.ASCII, timeout=mb_timeout)
             client.connect()
-            printLog("Connected succesfully to %s port %s!" % (host, port))
+            printLog("[%s] Connected succesfully to %s port %s!" % (thread_name, host, port))
             return client
         except:
-            printLog('Unable to establish connection to %s port %s.' % (host, port), 'error')
+            printLog('[%s] Unable to establish connection to %s port %s.' % (thread_name, host, port), 'error')
 
-def modbus_close(client: object):
+def mb_convert_registers(registers: list, data_type: str, swap_type: str = "none") -> object:
+    """
+    Convert the MODBUS response byte from the EVC device to the configured data type and swap type.
+
+    Mandatory keyword argument:
+    registers: list; The MODBUS message response from configured registers.
+    data_type: str; The configured data type.
+
+    Optional keyword argument:
+    swap_type: str; Byte swap type of the MODBUS message responses (none, word, word_byte). Default: none.
+    """
+    from pymodbus.client.mixin import ModbusClientMixin
+    from pymodbus.constants import Endian
+
+    decoded = None
+    if data_type == 'float32':
+        data_type_class = ModbusClientMixin.DATATYPE.FLOAT32
+    elif data_type == 'float64':
+        data_type_class = ModbusClientMixin.DATATYPE.FLOAT64
+    elif data_type == 'int16':
+        data_type_class = ModbusClientMixin.DATATYPE.INT16
+    elif data_type == 'int32':
+        data_type_class = ModbusClientMixin.DATATYPE.INT32
+    elif data_type == 'int64':
+        data_type_class = ModbusClientMixin.DATATYPE.INT64
+    elif data_type == 'string':
+        data_type_class = ModbusClientMixin.DATATYPE.STRING
+    elif data_type == 'uint16':
+        data_type_class = ModbusClientMixin.DATATYPE.UINT16
+    elif data_type == 'uint32' or data_type == 'dt1':
+        data_type_class = ModbusClientMixin.DATATYPE.UINT32
+    elif data_type == 'uint64':
+        data_type_class = ModbusClientMixin.DATATYPE.UINT64
+    elif data_type == 'dt2':
+        hex_values = ["{:04x}".format(register) for register in registers]
+        decoded = "".join(hex_values)
+
+    return ModbusClientMixin.convert_from_registers(registers, data_type=data_type_class, word_order=Endian.LITTLE if swap_type == 'word' else Endian.BIG) if decoded is None else decoded
+
+def mb_close(client: object):
     """
     A simple function to close a MODBUS connection.
 
     Mandatory keyword argument:
     client: object; The MODBUS connection variable.
     """
-    from danismod.funcs import printLog
+    thread_name = threading.current_thread().getName()
 
-    if isinstance(client, object) and len(client) > 0:
-        printLog("Disconnecting from Modbus devices...")
-        for client_conn in client:
-            if client[client_conn].connected == True:
-                client[client_conn].close()
-        del client
+    if isinstance(client, object):
+        printLog("[%s] Disconnecting from %s..." % (thread_name, client))
+        client.close()
