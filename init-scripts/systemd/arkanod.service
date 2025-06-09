@@ -7,7 +7,7 @@ After=mosquitto.service
 Type=simple
 Restart=always
 WorkingDirectory=/opt/arkanos/arkanod
-ExecStart=/usr/bin/env python3 -m arkanod
+ExecStart=/opt/arkanos/arkanod/main.py
 ExecReload=/bin/kill -HUP $MAINPID
 
 [Install]
