@@ -36,6 +36,7 @@ import sys
 from signal import signal as os_signal, SIGTERM, SIGINT, SIGHUP
 from time import sleep
 from glob import glob
+from sdnotify import SystemdNotifier
 
 # Import custom build dependencies.
 from arkanod.evc.const import *
@@ -530,7 +531,10 @@ def main():
         thread.name = mb_config_item['name']
         threads.append(thread)
         thread.start()
-    
+
+    # Notify systemd that the startup routines are done.
+    SystemdNotifier().notify("READY=1")
+
     while True:
         live_threads = 0
         for thread in threads:

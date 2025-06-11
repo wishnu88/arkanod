@@ -4,8 +4,9 @@ Documentation=https://github.com/wishnu88/arkanod
 After=mosquitto.service
 
 [Service]
-Type=simple
-Restart=always
+Type=notify
+Environment=PYTHONUNBUFFERED=true
+Restart=on-failure
 WorkingDirectory=/opt/arkanos/arkanod
 ExecStart=/opt/arkanos/arkanod/main.py
 ExecReload=/bin/kill -HUP $MAINPID
