@@ -3,8 +3,6 @@ Any AMR or Modbus inquiries? Feel free to contact me at wishnu@pahlevi.id!
 
 Poll EVC (Electronic Volume Corrector) data and archive log periodically using the 0-based address MODBUS protocol.
 
-Usage: python3 -m arkanod
-
 License:
     MIT License
 
@@ -43,6 +41,7 @@ mkdir /opt/arkanos
 cd /opt/arkanos
 git clone https://github.com/wishnu88/arkanod.git
 cd arkanod
+./main.py --create-tables
 ```
 2. **Install dependencies**  
 ```bash
