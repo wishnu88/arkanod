@@ -51,7 +51,7 @@ def init_create_tables(db_params: dict, register_conversion_fields: dict, mb_con
         # 'reconnect': True
     }
 
-    [Null, db_cur] = db_open(db_conn_params)
+    [db_conn, db_cur] = db_open(db_conn_params)
     
     def rollback_table(table_name: str, table_errors: int = table_errors):
         """ A simple procedure to drop the already created table. It requires only one keyword argument: table_name; str. """
@@ -61,6 +61,15 @@ def init_create_tables(db_params: dict, register_conversion_fields: dict, mb_con
             printLog("Rolling back create table %s." % table_name, 'error')
             table_errors += 1
 
+    def create_trigger_update_check():
+        # Create a trigger for the update_check table when it is updated.
+        q_trigger_req_datalog = TRIGGER_REQ_DATALOG % (db_params['tbl_prefix'], table_name, db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix'])
+        db_cur.execute(q_trigger_req_datalog)
+
+    def create_trigger_current_log():
+        # Create a trigger for the current_log table when it is updated.
+        db_cur.execute('CREATE TRIGGER IF NOT EXISTS `' + db_params['tbl_prefix'] + '_UPDATE_CHECK` AFTER UPDATE ON `' + table_name + '` FOR EACH ROW UPDATE ' + db_params['tbl_prefix'] + '_update_check SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND Date_End IS NULL')
+
     # Iterate through the available tables needed for runtime operation.
     for oper_table in OPER_TABLES:
         index_failed = 0
@@ -68,6 +77,8 @@ def init_create_tables(db_params: dict, register_conversion_fields: dict, mb_con
 
         if check_table_exists(table_name, db_params['db_name'], db_cur):
             printLog('Table %s is already exists, skipping.' % table_name)
+            if oper_table == 'update_check':
+                create_trigger_update_check()
             continue
         
         # Create an operation table.
@@ -88,9 +99,7 @@ def init_create_tables(db_params: dict, register_conversion_fields: dict, mb_con
                 index_failed += 1
             else:
                 try:
-                    # Create a trigger for the update_check table when it is updated.
-                    db_cur.execute(TRIGGER_REQ_DATALOG % (db_params['tbl_prefix'], table_name, db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix']))
-                
+                    create_trigger_update_check()
                 # Throw an error if the index creation fails.
                 except Exception as e:
                     printLog("Failed to create trigger for table %s: %s" % (table_name, e), 'error')
@@ -126,17 +135,16 @@ def init_create_tables(db_params: dict, register_conversion_fields: dict, mb_con
                 db_cur.execute('ALTER TABLE `%s` ADD UNIQUE KEY `unique_log` (`deviceID`,`%s`)' % (table_name, mb_config_check_item[log_table]['log_time_regname']))
 
             # Throw an error if the index creation fails.
-            except:
-                printLog("Failed to create index for table %s. Insufficient privilege?" % table_name, 'error')
+            except Exception as e:
+                printLog("Failed to create index for table %s: %s" % (table_name, e), 'error')
                 index_failed += 1
         else:
             # Instead of creating an index, we create a trigger for the current_log table when it is updated.
             try:
-                db_cur.execute('CREATE TRIGGER `%s_UPDATE_CHECK` AFTER UPDATE ON `%s` FOR EACH ROW UPDATE %s_update_check SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND Date_End IS NULL' % (db_params['tbl_prefix'], table_name, db_params['tbl_prefix']))
-
+                create_trigger_current_log()
             # Throw an error if the trigger creation fails.
-            except:
-                printLog("Failed to create trigger for table %s. Insufficient privilege?" % table_name, 'error')
+            except Exception as e:
+                printLog("Failed to create trigger for table %s: %s" % (table_name, e), 'error')
                 index_failed += 1
 
         # Drop the table if the index and/or trigger creation fails.
@@ -144,7 +152,8 @@ def init_create_tables(db_params: dict, register_conversion_fields: dict, mb_con
 
     # Create a database event to obtain the EVC devices that are not updated.
     try:
-        db_cur.execute(EVENT_NOT_UPDATE_CHECK % (db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix']))
+        q_not_update_check = EVENT_NOT_UPDATE_CHECK % (db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix'], db_params['tbl_prefix'])
+        db_cur.execute(q_not_update_check)
     except Exception as e:
         printLog("Failed to create event on database %s: %s" % (db_params['db_name'], e), 'error')
         table_errors += 1
@@ -153,4 +162,5 @@ def init_create_tables(db_params: dict, register_conversion_fields: dict, mb_con
     if table_errors > 0:
         printLog("WARNING: Not all table created successfully. Run this again after fixing the error(s).", 'error')
 
+    db_close(db_conn)
     app_exit(table_errors)

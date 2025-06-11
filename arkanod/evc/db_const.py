@@ -29,7 +29,7 @@ The evc module database constants initialization file.
 """
 
 TRIGGER_REQ_DATALOG = """
-CREATE TRIGGER `%s_REQ_DATALOG` AFTER UPDATE ON `%s` FOR EACH ROW BEGIN
+CREATE TRIGGER IF NOT EXISTS `%s_REQ_DATALOG` AFTER UPDATE ON `%s` FOR EACH ROW BEGIN
     DECLARE xDate_Start INT unsigned;
     DECLARE xDate_End INT unsigned;
     DECLARE devID INT unsigned;

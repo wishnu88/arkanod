@@ -42,6 +42,7 @@ from arkanod.evc.const import *
 from arkanod.evc.device_read import *
 from danismod.yaml_include import *
 from danismod.funcs import printLog
+from danismod.db_funcs import db_config_check
 
 # Variable initialization for storing configured group_ids.
 group_id_list = {}
@@ -193,42 +194,6 @@ def register_conversion_paramcheck(param_name: str, conversion_item_index: int, 
         else:
             printLog('[Item %s - register_conversion - Conversion Item %s] Unable to find %s settings.' % (item_index, conversion_item_index, param_name), 'error')
             error_len = error_len + 1
-
-def db_config_check():
-    global error_len
-
-    # Read <base_dir>/config/db.yaml file for database configuration. Will be supporting multiple databases and DBMS in the future.
-    with open('config/db.yaml', 'r') as db_config:
-        printLog('Loading MariaDB database settings from config/db.yaml...')
-        db_config_check = db_config_detail = yaml.safe_load(db_config)
-
-        # START - DB config sanity check and default value.
-
-        if len(db_config_check) > 0:
-            
-            for db_item_index, db_instance in enumerate(db_config_check):
-                for db_param_name in ['db_instance','db_host','db_username','db_password','db_name']:
-                    if db_param_name not in db_instance:
-                        printLog('[DB Item %s] Unable to find %s settings' + ' for instance %s' if db_param_name != 'db_instance' else '' + '.' % (db_item_index, db_param_name, db_instance['db_instance'] if db_param_name != 'db_instance' else None), 'error')
-                        error_len = error_len + 1
-                    elif db_param_name in db_instance and db_instance[db_param_name] == "":
-                        printLog('[DB Item %s] Invalid %s settings' + ' for instance %s' if db_param_name != 'db_instance' else '' + '.' % (db_item_index, db_param_name, db_instance['db_instance'] if db_param_name != 'db_instance' else None), 'error')
-                        error_len = error_len + 1
-
-                if 'db_port' not in db_instance:
-                    printLog('[DB Item %s] Unable to find db_port settings. Assuming TCP/3306 as the DB port.' % db_item_index, 'debug')
-                    db_config_detail[db_item_index]['db_port'] = 3306
-                elif 'db_port' in db_instance:
-                    if (isinstance(db_instance['db_port'], int) and (db_instance['db_port'] < 1 or db_instance['db_port'] > 65535)) or isinstance(db_instance['db_port'], int) == False:
-                        printLog('[DB Item %s] Invalid db_port settings.' % db_item_index, 'error')
-                        error_len = error_len + 1
-
-        if error_len > 0:
-            app_exit(1)
-        else:
-            printLog('MariaDB database settings loaded successfully.')
-            return db_config_detail
-        # END - DB config sanity check and default value.
 
 def main():
     global error_len
@@ -532,7 +497,11 @@ def main():
 
     # END - Modbus config sanity check and default value.
 
+    # DB config sanity check, tables existence and default value.
     db_params = db_config_check()
+
+    if db_params == False:
+        app_exit(1)
 
     # START -- Create tables if --create-tables argument is passed.
     if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':

@@ -30,8 +30,13 @@ The danismod module database functions initialization file.
 
 import MySQLdb
 import threading
+import sys
+
 from time import sleep
 from .funcs import printLog
+from danismod.yaml_include import *
+from arkanod.evc.db_const import OPER_TABLES
+from arkanod.evc.const import ARCHIVE_LOG_LIST
 
 def check_table_exists(table_name: str, db_name: str, db_cur: object) -> bool:
     """
@@ -64,17 +69,20 @@ def create_table_exec(table_name: str, query: str, db_cur: object):
     else:
         printLog('Table %s is successfully created.' % table_name)
 
-def db_open(db_params: dict) -> list:
+def db_open(db_config: dict) -> list:
     thread_name = threading.current_thread().getName()
     db_conn = None
+
     while db_conn == None:
         try:
-            db_conn = MySQLdb.connect(**db_params)
+            db_conn = MySQLdb.connect(**db_config)
             db_cur = db_conn.cursor()
             printLog("[%s] Database server CONNECTED." % thread_name)
         except MySQLdb.Error as e:
             printLog("[%s] ERROR connecting to the database: %s" % (thread_name, e), 'critical')
             sleep(0.1)
+            if sys._getframe(1).f_code.co_name == 'db_config_check':
+                return [None, None]
     
     return [db_conn, db_cur]
 
@@ -90,3 +98,88 @@ def db_close(db_conn: object):
         printLog("[%s] Closing MariaDB database..." % thread_name)
         db_conn.close()
         del db_conn
+
+def db_config_check() -> dict | bool:
+    error_len = 0
+
+    # Read <base_dir>/config/db.yaml file for database configuration. Will be supporting multiple databases and DBMS in the future.
+    with open('config/db.yaml', 'r') as db_config:
+        printLog('Loading MariaDB database settings from config/db.yaml...')
+        db_config_check = db_config_detail = yaml.safe_load(db_config)
+
+        # START - DB config sanity check and default value.
+
+        if len(db_config_check) > 0:
+            
+            for db_item_index, db_instance in enumerate(db_config_check):
+                for db_param_name in ['db_instance','db_host','db_username','db_password','db_name']:
+                    if db_param_name not in db_instance:
+                        error_len += 1
+                        if db_param_name == 'db_instance':
+                            printLog("[DB Item %s] Unable to find the valid %s configuration." % (db_item_index, db_param_name), 'error')
+                            break
+                        else:
+                            printLog("[DB Item %s] Unable to find %s configuration for instance %s." % (db_item_index, db_param_name, db_instance['db_instance']), 'error')
+                    elif db_param_name in db_instance and db_instance[db_param_name] == "":
+                        if db_param_name == 'db_instance':
+                            printLog("[DB Item %s] db_instance configuration cannot be empty." % db_item_index, 'error')
+                        else:
+                            printLog("[DB Item %s] Invalid %s configuration for instance %s." % (db_item_index, db_param_name, db_instance['db_instance']), 'error')
+                        error_len += 1
+
+                if 'db_port' not in db_instance:
+                    printLog("[DB Item %s] Unable to find db_port configuration. Assuming TCP/3306 as the DB port." % db_item_index, 'debug')
+                    db_config_detail[db_item_index]['db_port'] = 3306
+                elif 'db_port' in db_instance:
+                    if (isinstance(db_instance['db_port'], int) and (db_instance['db_port'] < 1 or db_instance['db_port'] > 65535)) or isinstance(db_instance['db_port'], int) == False:
+                        printLog("[DB Item %s] Invalid db_port configuration." % db_item_index, 'error')
+                        error_len += 1
+
+        if error_len > 0:
+            return False
+        elif len(sys.argv) == 2 and sys.argv[1] == '--create-tables':
+            pass
+        else:
+            for db_config in db_config_detail:
+                db_conn_params = {
+                    'host': db_config['db_host'],
+                    'port': db_config['db_port'],
+                    'user': db_config['db_username'],
+                    'password': db_config['db_password'],
+                    'database': db_config['db_name'],
+                    'autocommit': True,
+                    # 'reconnect': True
+                }
+                [db_conn, db_cur] = db_open(db_conn_params)
+                if db_cur is None:
+                    error_len += 1
+                    break
+                else:
+                    for the_table in [*OPER_TABLES, *ARCHIVE_LOG_LIST]:
+                        table_name = db_config['tbl_prefix'] + '_' + the_table
+                        if not check_table_exists(table_name, db_config['db_name'], db_cur):
+                            printLog('Table %s is not exists in database %s.' % (table_name, db_config['db_name']), 'error')
+                            error_len += 1
+
+            if error_len == 0:
+                # Check whether the 2 triggers have already been created.
+                q_check_trigger = "SHOW TRIGGERS LIKE '" + db_config['tbl_prefix'] + "_%'"
+                db_cur.execute(q_check_trigger)
+                if db_cur.rowcount != 2:
+                    printLog('Missing triggers in database %s.' % db_config['db_name'], 'error')
+                    error_len += 1
+
+                q_check_event = "SHOW EVENTS FROM " + db_config['db_name'] + " LIKE '" + db_config['tbl_prefix'] + "_NOT_UPDATE_CHECK'"
+                db_cur.execute(q_check_event)
+                if db_cur.rowcount != 1:
+                    printLog('Missing event in database %s.' % db_config['db_name'], 'error')
+                    error_len += 1
+
+            if error_len > 0:
+                printLog("Run arkanod with the '--create-tables' option to solve the issue(s).", 'error')
+                db_close(db_conn)
+                return False
+
+        printLog('Database configuration loaded and checked successfully.')
+        return db_config_detail
+        # END - DB config sanity check and default value.
