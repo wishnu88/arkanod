@@ -162,8 +162,7 @@ def db_config_check() -> dict | bool:
                 }
                 [db_conn, db_cur] = db_open(db_conn_params)
                 if db_cur is None:
-                    error_len += 1
-                    break
+                    return False
                 else:
                     for the_table in [*OPER_TABLES, *ARCHIVE_LOG_LIST]:
                         table_name = db_config['tbl_prefix'] + '_' + the_table
