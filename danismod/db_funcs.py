@@ -70,6 +70,12 @@ def create_table_exec(table_name: str, query: str, db_cur: object):
         printLog('Table %s is successfully created.' % table_name)
 
 def db_open(db_config: dict) -> list:
+    """
+    A simple function to open a connection to the database system.
+
+    Mandatory keyword argument:
+    db_config: dict; A dictionary of database connection credentials.
+    """
     thread_name = threading.current_thread().getName()
     db_conn = None
 
@@ -100,6 +106,10 @@ def db_close(db_conn: object):
         del db_conn
 
 def db_config_check() -> dict | bool:
+    """
+    A procedure to perform a complete database existence check before going to the main program.
+    It will return a boolean False if the check fails; otherwise, it will return the dictionary of the database connection and its cursor. 
+    """
     error_len = 0
 
     # Read <base_dir>/config/db.yaml file for database configuration. Will be supporting multiple databases and DBMS in the future.

@@ -38,7 +38,9 @@ def init_create_tables(db_params: dict, register_conversion_fields: dict, mb_con
     The procedure to initiate the database tables. It is usually fired when --create-tables is called from the main program.
 
     Mandatory keyword argument:
-    db_cur: object; The database cursor variable.
+    db_params: dict; The database configuration details.
+    register_conversion_fields: dict; The dictionary of MODBUS item conversion list.
+    mb_config_check_item: dict; The dictionary of MODBUS registers.
     """
     table_errors = 0
     db_conn_params = {
