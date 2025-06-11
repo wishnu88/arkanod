@@ -26,7 +26,7 @@ License:
     OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
     SOFTWARE.
 
-Tested in MacOS Sequoia 15.5 and Debian GNU/Linux 12 (should be no issue in any other available Linux distros).
+Tested in macOS Sequoia 15.5 and Debian GNU/Linux 12 (should be no issue in any other available Linux distros).
 A more detailed explanation about how to use this software can be obtained by sending me an email.
 
 ## Prerequisites
@@ -41,11 +41,11 @@ mkdir /opt/arkanos
 cd /opt/arkanos
 git clone https://github.com/wishnu88/arkanod.git
 cd arkanod
-./main.py --create-tables
 ```
-2. **Install dependencies**  
+2. **Install dependencies and database tables**  
 ```bash
 pip3 install -r requirements.txt
+./main.py --create-tables
 ```
 3. **Install systemd script (Debian/Ubuntu only)**  
 ```bash
