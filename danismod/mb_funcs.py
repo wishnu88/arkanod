@@ -55,7 +55,7 @@ def mb_connect(type: str, port: str, host: str = None, mb_timeout: int = None):
             printLog('[%s] Unable to establish connection to %s.' % (thread_name, client), 'error')
         else:
             printLog("[%s] Connected succesfully to %s!" % (thread_name, client))
-            return client
+        return client
 
     if type in ['rtuovertcp','tcp']:        
         try:
@@ -75,6 +75,9 @@ def mb_connect(type: str, port: str, host: str = None, mb_timeout: int = None):
             return mb_connect_exec()
         except:
             printLog('[%s] Unable to establish connection to %s.' % (thread_name, port), 'error')
+
+    # Must return the client object if an exception is raised.
+    return client
 
 def mb_convert_registers(registers: list, data_type: str, swap_type: str = "none") -> object:
     """
