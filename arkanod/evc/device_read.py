@@ -242,11 +242,11 @@ class device_read(threading.Thread):
 
                 self.mb_client = mb_connect(self.mb_config_item['type'], host=self.mb_config_item['host'], port=self.mb_config_item['port'], mb_timeout=self.mb_config_item['timeout_seconds'])
 
-                if self.mb_client.connected == True:
-                    self.current_log_timer = 0
-                else:
+                if self.mb_client.connected != True:
                     # Reset timer, waiting for the next cycle.
                     self.current_log_timer = round(millis()*1000)
+                else:
+                    self.current_log_timer = 0
 
             # Poll the EVC device when the current log scan time deadline is met.
             elif round(millis()*1000) - self.current_log_timer >= int(self.mb_config_item['current_log']['scan_interval_ms']) and self.mb_client.connected == True and self.is_alive():
