@@ -533,7 +533,7 @@ def main():
         thread.start()
 
     # Delete unnecesary variables to free some memory space
-    del mb_config_item, mb_config_detail
+    del mb_config_item, mb_config_detail, db_params
 
     # Notify systemd that the startup routines are done.
     SystemdNotifier().notify("READY=1")

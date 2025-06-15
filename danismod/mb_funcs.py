@@ -47,7 +47,15 @@ def mb_connect(type: str, port: str, host: str = None, mb_timeout: int = None):
     Optional keyword argument:
     mb_timeout: int; The MODBUS response timeout in seconds. Default: None (pyModbus defined default).
     """
-    thread_name = threading.current_thread().getName()
+    thread_name = threading.current_thread().name
+
+    def mb_connect_exec():
+        client.connect()
+        if client.connected != True:
+            printLog('[%s] Unable to establish connection to %s.' % (thread_name, client), 'error')
+        else:
+            printLog("[%s] Connected succesfully to %s!" % (thread_name, client))
+            return client
 
     if type in ['rtuovertcp','tcp']:        
         try:
@@ -55,9 +63,7 @@ def mb_connect(type: str, port: str, host: str = None, mb_timeout: int = None):
             if 'ModbusTcpClient' not in sys.modules:
                 from pymodbus.client import ModbusTcpClient
             client = ModbusTcpClient(host=host, port=int(port), framer=FramerType.RTU if type == 'rtu' or type == 'rtuovertcp' else FramerType.SOCKET if type == 'tcp' else FramerType.ASCII, timeout=mb_timeout)
-            client.connect()
-            printLog("[%s] Connected succesfully to %s port %s!" % (thread_name, host, port))
-            return client
+            return mb_connect_exec()
         except:
             printLog('[%s] Unable to establish connection to %s port %s.' % (thread_name, host, port), 'error')
     elif type == 'rtu':        
@@ -66,11 +72,9 @@ def mb_connect(type: str, port: str, host: str = None, mb_timeout: int = None):
             if 'ModbusSerialClient' not in sys.modules:
                 from pymodbus.client import ModbusSerialClient
             client = ModbusSerialClient(port=port, framer=FramerType.RTU if type == 'rtu' or type == 'rtuovertcp' else FramerType.SOCKET if type == 'tcp' else FramerType.ASCII, timeout=mb_timeout)
-            client.connect()
-            printLog("[%s] Connected succesfully to %s port %s!" % (thread_name, host, port))
-            return client
+            return mb_connect_exec()
         except:
-            printLog('[%s] Unable to establish connection to %s port %s.' % (thread_name, host, port), 'error')
+            printLog('[%s] Unable to establish connection to %s.' % (thread_name, port), 'error')
 
 def mb_convert_registers(registers: list, data_type: str, swap_type: str = "none") -> object:
     """

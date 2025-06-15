@@ -234,18 +234,22 @@ class device_read(threading.Thread):
         current_device_id = 0
 
         while not self.stop_me.is_set():
-            if self.mb_client is None or (self.mb_client is not None and hasattr(self.mb_client, 'connected') and self.mb_client.connected == False):
+            # Pause between MODBUS device connection attempts if it fails.
+            if (self.mb_client is None or (self.mb_client is not None and hasattr(self.mb_client, 'connected') and self.mb_client.connected == False)) and round(millis()*1000) - self.current_log_timer >= int(self.mb_config_item['current_log']['scan_interval_ms']):
 
                 if self.mb_client is not None:
                     printLog('[%s] Disconnected from %s port %s.' % (self.name, self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local', self.mb_config_item['port']), 'error')
+
                 self.mb_client = mb_connect(self.mb_config_item['type'], host=self.mb_config_item['host'], port=self.mb_config_item['port'], mb_timeout=self.mb_config_item['timeout_seconds'])
 
-                # Pause between MODBUS device connection attempts if it fails.
-                if self.mb_client.connected != True:
-                    sleep(int(self.mb_config_item['current_log']['scan_interval_ms']) / 1000)
+                if self.mb_client.connected == True:
+                    self.current_log_timer = 0
+                else:
+                    # Reset timer, waiting for the next cycle.
+                    self.current_log_timer = round(millis()*1000)
 
             # Poll the EVC device when the current log scan time deadline is met.
-            if round(millis()*1000) - self.current_log_timer >= int(self.mb_config_item['current_log']['scan_interval_ms']) and self.mb_client.connected == True and self.is_alive():
+            elif round(millis()*1000) - self.current_log_timer >= int(self.mb_config_item['current_log']['scan_interval_ms']) and self.mb_client.connected == True and self.is_alive():
                 try:
                     db_conn.ping()
                 except DBOperationalError as e:
