@@ -29,7 +29,7 @@ class device_read(threading.Thread):
         self.evctime_reg = evctime_reg
         self.archive_log_failed = ARCHIVE_LOG_FAILED.copy()
         self.current_log_timer = 0
-        self.thread_id = threading.get_native_id()
+        self.modbus_connected = False
 
     def get_log_group_ids(self, register_group_ids: list) -> list:
         """
@@ -237,16 +237,18 @@ class device_read(threading.Thread):
             # Pause between MODBUS device connection attempts if it fails.
             if (self.mb_client is None or (self.mb_client is not None and hasattr(self.mb_client, 'connected') and self.mb_client.connected == False)) and round(millis()*1000) - self.current_log_timer >= int(self.mb_config_item['current_log']['scan_interval_ms']):
 
-                if self.mb_client is not None:
-                    printLog('[%s] Disconnected from %s port %s.' % (self.name, self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local', self.mb_config_item['port']), 'error')
+                if self.mb_client is not None and self.modbus_connected == True:
+                    printLog('[%s] Disconnected from %s.' % (self.name, self.mb_client), 'error')
+                    self.modbus_connected == False
 
                 self.mb_client = mb_connect(self.mb_config_item['type'], host=self.mb_config_item['host'], port=self.mb_config_item['port'], mb_timeout=self.mb_config_item['timeout_seconds'])
 
-                if self.mb_client.connected != True:
+                if self.mb_client.connected == True:
+                    self.current_log_timer = 0
+                    self.modbus_connected = True
+                else:
                     # Reset timer, waiting for the next cycle.
                     self.current_log_timer = round(millis()*1000)
-                else:
-                    self.current_log_timer = 0
 
             # Poll the EVC device when the current log scan time deadline is met.
             elif round(millis()*1000) - self.current_log_timer >= int(self.mb_config_item['current_log']['scan_interval_ms']) and self.mb_client.connected == True and self.is_alive():
