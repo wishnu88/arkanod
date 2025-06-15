@@ -501,7 +501,7 @@ def main():
         printLog('Modbus device configuration(s) loaded successfully.')
 
         # Delete all unneeded variable after the sanity check is done.
-        del mb_config_check_all
+        del mb_config_check_all, mb_config_check_item
 
     # END - Modbus config sanity check and default value.
 
@@ -531,6 +531,9 @@ def main():
         thread.name = mb_config_item['name']
         threads.append(thread)
         thread.start()
+
+    # Delete unnecesary variables to free some memory space
+    del mb_config_item, mb_config_detail
 
     # Notify systemd that the startup routines are done.
     SystemdNotifier().notify("READY=1")

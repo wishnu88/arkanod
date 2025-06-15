@@ -240,6 +240,10 @@ class device_read(threading.Thread):
                     printLog('[%s] Disconnected from %s port %s.' % (self.name, self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local', self.mb_config_item['port']), 'error')
                 self.mb_client = mb_connect(self.mb_config_item['type'], host=self.mb_config_item['host'], port=self.mb_config_item['port'], mb_timeout=self.mb_config_item['timeout_seconds'])
 
+                # Pause between MODBUS device connection attempts if it fails.
+                if self.mb_client.connected != True:
+                    sleep(int(self.mb_config_item['current_log']['scan_interval_ms']) / 1000)
+
             # Poll the EVC device when the current log scan time deadline is met.
             if round(millis()*1000) - self.current_log_timer >= int(self.mb_config_item['current_log']['scan_interval_ms']) and self.mb_client.connected == True and self.is_alive():
                 try:
