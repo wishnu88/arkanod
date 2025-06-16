@@ -29,52 +29,61 @@ The danismod module MODBUS functions initialization file.
 Depend heavily on pyModbus.
 """
 
-import sys
 import threading
 from pymodbus import FramerType
+from pymodbus.client import ModbusTcpClient, ModbusSerialClient
+from pymodbus.client.mixin import ModbusClientMixin
+from pymodbus.constants import Endian
 
-from danismod.funcs import printLog
 
-def mb_connect(type: str, port: str, host: str = None, mb_timeout: int = None):
+from danismod.funcs import print_log
+
+def mb_connect(mb_type: str, port: str, host: str = None, mb_timeout: int = None):
     """
     Connect to the EVC device using the MODBUS protocol.
 
     Mandatory keyword arguments:
     type: str; The MODBUS protocol type (rtu, rtuovertcp, tcp).
     port: str; The MODBUS TCP port of the EVC device.
-    host: str; The MODBUS TCP host name or IP of the EVC device. Usually used when type is rtuovertcp or tcp.
+    host: str; The MODBUS TCP host name or IP of the EVC device. Usually used when type is
+          rtuovertcp or tcp.
 
     Optional keyword argument:
-    mb_timeout: int; The MODBUS response timeout in seconds. Default: None (pyModbus defined default).
+    mb_timeout: int; The MODBUS response timeout in seconds. Default: None (pyModbus defined
+                default).
     """
     thread_name = threading.current_thread().name
+    client = None
 
     def mb_connect_exec():
         client.connect()
-        if client.connected != True:
-            printLog('[%s] Unable to establish connection to %s.' % (thread_name, client), 'error')
+        if client.connected is not True:
+            print_log(f"[{thread_name}] Unable to establish connection to {client}.", 'error')
         else:
-            printLog("[%s] Connected succesfully to %s!" % (thread_name, client))
+            print_log(f"[{thread_name}] Connected succesfully to {client}!")
         return client
 
-    if type in ['rtuovertcp','tcp']:        
+    if mb_type in ('rtuovertcp','tcp'):
         try:
-            printLog("[%s] Connecting to %s port %s..." % (thread_name, host, port))
-            if 'ModbusTcpClient' not in sys.modules:
-                from pymodbus.client import ModbusTcpClient
-            client = ModbusTcpClient(host=host, port=int(port), framer=FramerType.RTU if type == 'rtu' or type == 'rtuovertcp' else FramerType.SOCKET if type == 'tcp' else FramerType.ASCII, timeout=mb_timeout)
+            print_log(f"[{thread_name}] Connecting to {host} port {port}...")
+            client = ModbusTcpClient(host=host,
+                                     port=int(port),
+                                     framer=FramerType.RTU if mb_type in ('rtu', 'rtuovertcp')
+                                     else FramerType.SOCKET if mb_type == 'tcp'
+                                     else FramerType.ASCII, timeout=mb_timeout)
             return mb_connect_exec()
-        except:
-            printLog('[%s] Unable to establish connection to %s port %s.' % (thread_name, host, port), 'error')
-    elif type == 'rtu':        
+        except Exception as e:
+            print_log(f"[{thread_name}] Unable to establish connection to {client}: {e}", 'error')
+    elif mb_type == 'rtu':
         try:
-            printLog("[%s] Connecting to port %s..." % (thread_name, port))
-            if 'ModbusSerialClient' not in sys.modules:
-                from pymodbus.client import ModbusSerialClient
-            client = ModbusSerialClient(port=port, framer=FramerType.RTU if type == 'rtu' or type == 'rtuovertcp' else FramerType.SOCKET if type == 'tcp' else FramerType.ASCII, timeout=mb_timeout)
+            print_log(f"[{thread_name}] Connecting to port {port}...")
+            client = ModbusSerialClient(port=port,
+                                        framer=FramerType.RTU if mb_type in ('rtu', 'rtuovertcp')
+                                        else FramerType.SOCKET if mb_type == 'tcp'
+                                        else FramerType.ASCII, timeout=mb_timeout)
             return mb_connect_exec()
-        except:
-            printLog('[%s] Unable to establish connection to %s.' % (thread_name, port), 'error')
+        except Exception as e:
+            print_log(f"[{thread_name}] Unable to establish connection to {client}: {e}", 'error')
 
     # Must return the client object if an exception is raised.
     return client
@@ -88,12 +97,11 @@ def mb_convert_registers(registers: list, data_type: str, swap_type: str = "none
     data_type: str; The configured data type.
 
     Optional keyword argument:
-    swap_type: str; Byte swap type of the MODBUS message responses (none, word, word_byte). Default: none.
+    swap_type: str; Byte swap type of the MODBUS message responses (none, word, word_byte).
+               Default: none.
     """
-    from pymodbus.client.mixin import ModbusClientMixin
-    from pymodbus.constants import Endian
-
     decoded = None
+    data_type_class = None
     if data_type == 'float32':
         data_type_class = ModbusClientMixin.DATATYPE.FLOAT32
     elif data_type == 'float64':
@@ -108,7 +116,7 @@ def mb_convert_registers(registers: list, data_type: str, swap_type: str = "none
         data_type_class = ModbusClientMixin.DATATYPE.STRING
     elif data_type == 'uint16':
         data_type_class = ModbusClientMixin.DATATYPE.UINT16
-    elif data_type == 'uint32' or data_type == 'dt1':
+    elif data_type in ('uint32','dt1'):
         data_type_class = ModbusClientMixin.DATATYPE.UINT32
     elif data_type == 'uint64':
         data_type_class = ModbusClientMixin.DATATYPE.UINT64
@@ -116,7 +124,10 @@ def mb_convert_registers(registers: list, data_type: str, swap_type: str = "none
         hex_values = ["{:04x}".format(register) for register in registers]
         decoded = "".join(hex_values)
 
-    return ModbusClientMixin.convert_from_registers(registers, data_type=data_type_class, word_order=Endian.LITTLE if swap_type == 'word' else Endian.BIG) if decoded is None else decoded
+    return ModbusClientMixin.convert_from_registers(registers,
+                                                    data_type=data_type_class,
+                                                    word_order=Endian.LITTLE if swap_type == 'word'
+                                                    else Endian.BIG) if decoded is None else decoded
 
 def mb_close(client: object):
     """
@@ -125,8 +136,8 @@ def mb_close(client: object):
     Mandatory keyword argument:
     client: object; The MODBUS connection variable.
     """
-    thread_name = threading.current_thread().getName()
+    thread_name = threading.current_thread().name
 
     if isinstance(client, object):
-        printLog("[%s] Disconnecting from %s..." % (thread_name, client))
+        print_log(f"[{thread_name}] Disconnecting from {client}...")
         client.close()

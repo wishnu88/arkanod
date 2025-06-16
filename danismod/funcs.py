@@ -27,8 +27,13 @@ License:
 
 The danismod module general functions initialization file.
 """
+import sys
+import logging
+from datetime import datetime, timezone
 
-def printLog(msg: str, level: str = 'info'):
+from arkanod.evc.const import LOG_LEVEL
+
+def print_log(msg: str, level: str = 'info'):
     """
     Log to STDOUT (or another channel in the future) with the configured log level.
 
@@ -38,9 +43,6 @@ def printLog(msg: str, level: str = 'info'):
     Optional keyword argument:
     level: str; The log level (info, debug, error, critical). Default: info.
     """
-    import logging
-    from arkanod.evc.const import LOG_LEVEL
-
     severity = {
         'critical': 0,
         'error': 1,
@@ -61,6 +63,24 @@ def printLog(msg: str, level: str = 'info'):
         if severity[level] <= LOG_LEVEL:
             print(msg, flush=True)
 
+def app_exit(exit_val: int = 0):
+    """
+    Exit the main program with 0 exit status by default.
+
+    Optional keyword argument:
+    exit_val: int; default to 0, means no error occurred while exiting, error indicated if it is
+    greater than 0 (see UNIX exit status).
+    """
+    try:
+        if exit_val > 0:
+            print_log('Main thread exiting with error(s)...')
+        else:
+            print_log('Main thread is exiting...')
+
+        sys.exit(exit_val)
+    except Exception as e:
+        print_log(f"Error(s) occurred in main thread, right before exit: {e}", 'error')
+
 def dt_utc_to_current(datetime_str: int, data_type: str = 'dt1'):
     """
     Convert the EVC device system date time to the database field datetime format.
@@ -71,13 +91,15 @@ def dt_utc_to_current(datetime_str: int, data_type: str = 'dt1'):
     Optional keyword argument:
     data_type: str; The EVC device date time format type (dt1, dt2). Default: dt1.
     """
-    import logging
-    from datetime import datetime, timezone
-
     data_type = 'dt1' if data_type == 'dt2' and datetime_str == 0 else data_type
 
-    # Basically, dt1 is a UNIX timestamp, while dt2 is taken from Corus Evo+ default date time format.
+    # Basically, dt1 is a UNIX timestamp, while dt2 is taken from Corus Evo+ default date time
+    # format.
     if data_type == 'dt1':
-        return datetime.strptime(str(datetime.fromtimestamp(datetime_str, timezone.utc)), '%Y-%m-%d %H:%M:%S%z')
-    elif data_type == 'dt2':             
+        utc_datetime = str(datetime.fromtimestamp(datetime_str, timezone.utc))
+        return datetime.strptime(utc_datetime, '%Y-%m-%d %H:%M:%S%z')
+
+    if data_type == 'dt2':
         return datetime.strptime(datetime_str, '%y%m%d%H%M%S')
+
+    return False

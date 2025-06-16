@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Poll EVC (Electronic Volume Corrector) data and archive log periodically using the 0-based address MODBUS protocol.
+Poll EVC (Electronic Volume Corrector) data and archive log periodically using the 0-based address
+MODBUS protocol.
 
 License:
     MIT License

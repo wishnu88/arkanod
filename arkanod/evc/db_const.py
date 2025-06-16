@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Poll EVC (Electronic Volume Corrector) data and archive log periodically using the 0-based address MODBUS protocol.
+Poll EVC (Electronic Volume Corrector) data and archive log periodically using the 0-based address
+MODBUS protocol.
 
 License:
     MIT License
@@ -77,7 +78,27 @@ DATA_TYPE = {
 }
 
 OPER_TABLES = {
-    'devices': "(`id` int AUTO_INCREMENT PRIMARY KEY, `mbmaster_name` varchar(30) NOT NULL, `slaveID` tinyint NOT NULL DEFAULT 1, DeviceCreated DATETIME DEFAULT current_timestamp(), LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP()) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4",
-    'request_log': "(`id` BIGINT AUTO_INCREMENT PRIMARY KEY, `deviceID` int NOT NULL, `archiveLog` tinyint NOT NULL, `logRetention` smallint NOT NULL, `requestStatus` tinyint NOT NULL DEFAULT 0, `RequestCreated` datetime NOT NULL DEFAULT current_timestamp(), `LastUpdated` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4",
-    'update_check': "(`id` INT AUTO_INCREMENT PRIMARY KEY, `deviceID` int NOT NULL, `Date_Start` datetime NOT NULL, `Date_End` datetime DEFAULT NULL) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4"
+    'devices': (
+        "(`id` int AUTO_INCREMENT PRIMARY KEY, "
+        "`mbmaster_name` varchar(30) NOT NULL, "
+        "`slaveID` tinyint NOT NULL DEFAULT 1, "
+        "DeviceCreated DATETIME DEFAULT current_timestamp(), "
+        "LastUpdated DATETIME DEFAULT current_timestamp() ON UPDATE CURRENT_TIMESTAMP())"
+        " ENGINE=MyISAM DEFAULT CHARSET=utf8mb4"
+    ),
+    'request_log': (
+        "(`id` BIGINT AUTO_INCREMENT PRIMARY KEY, "
+        "`deviceID` int NOT NULL, "
+        "`archiveLog` tinyint NOT NULL, "
+        "`logRetention` smallint NOT NULL, "
+        "`requestStatus` tinyint NOT NULL DEFAULT 0, "
+        "`RequestCreated` datetime NOT NULL DEFAULT current_timestamp(), "
+        "`LastUpdated` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp())"
+        " ENGINE=MyISAM DEFAULT CHARSET=utf8mb4"
+    ),
+    'update_check': ("(`id` INT AUTO_INCREMENT PRIMARY KEY, "
+        "`deviceID` int NOT NULL, "
+        "`Date_Start` datetime NOT NULL, "
+        "`Date_End` datetime DEFAULT NULL) "
+        "ENGINE=MyISAM DEFAULT CHARSET=utf8mb4")
 }

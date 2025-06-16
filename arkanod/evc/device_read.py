@@ -1,14 +1,47 @@
+# -*- coding: utf-8 -*-
+"""
+Poll EVC (Electronic Volume Corrector) data and archive log periodically using the 0-based address
+MODBUS protocol.
+
+License:
+    MIT License
+
+    Copyright (c) 2024-2025 Wishnu Adhi Pahlevi <wishnu@pahlevi.id>
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the “Software”), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+    
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+
+The MODBUS DeviceRead class file.
+"""
 import threading
-from MySQLdb import OperationalError as DBOperationalError
 from time import (sleep, time as millis)
 from datetime import timedelta
+from MySQLdb import OperationalError as DBOperationalError
 
-from danismod.funcs import printLog, dt_utc_to_current
-from danismod.mb_funcs import *
+from danismod.funcs import print_log, dt_utc_to_current
+from danismod.mb_funcs import mb_connect, mb_convert_registers, mb_close
 from danismod.db_funcs import db_open, db_close
 from .const import ARCHIVE_LOG_LIST, ARCHIVE_LOG_ENABLED, ARCHIVE_LOG_FAILED
 
-class device_read(threading.Thread):
+class DeviceRead(threading.Thread):
+    """
+    A simple class extending a threading.Thread class for reading a MODBUS device.
+    """
 
     def __init__(self, mb_config_item: dict, evctime_reg: dict, db_params: dict):
         threading.Thread.__init__(self)
@@ -27,9 +60,7 @@ class device_read(threading.Thread):
         self.mb_config_item = mb_config_item
         self.db_tbl_prefix = db_params['tbl_prefix']
         self.evctime_reg = evctime_reg
-        self.archive_log_failed = ARCHIVE_LOG_FAILED.copy()
         self.current_log_timer = 0
-        self.modbus_connected = False
 
     def get_log_group_ids(self, register_group_ids: list) -> list:
         """
@@ -40,7 +71,7 @@ class device_read(threading.Thread):
         """
 
         register_group_address = []
-        
+
         for register_group in self.mb_config_item['register_group']:
 
             # Skip group_id not included in group_ids.
@@ -56,20 +87,23 @@ class device_read(threading.Thread):
         Get log items value fron EVC and return the dict of it.
 
         Mandatory keyword argument:
-        register_groups: list; MODBUS register address groups configured for the corresponding EVC log.
+        register_groups: list; MODBUS register address groups configured for the corresponding EVC
+                         log.
 
         Optional keyword argument:
-        slave_id: int; specify device ID of configured EVC. Must be specified when retrieving the EVC archive log.
-        """       
+        slave_id: int; specify device ID of configured EVC. Must be specified when retrieving the
+                  EVC archive log.
+        """
         register_group_address = {}
         register_items = {}
         register_slave_ids = {}
-        error_msg = None
 
         for register_group in register_groups:
-            
+
             current_slave_id = int(register_group['slave'])
             register_items[current_slave_id] = {}
+            result = None
+
             if slave_id is not None and slave_id != current_slave_id:
                 continue
             register_gap = 0 if 'gap' not in register_group else register_group['gap']
@@ -85,16 +119,16 @@ class device_read(threading.Thread):
                     result = self.mb_client.read_holding_registers(address=int(register_group['address']) + register_gap, count=register_group['count'], slave=current_slave_id)
             except Exception as e:
                 # Throw an error when the EVC didn't response to MODBUS poll.
-                printLog('[%s] Unable to poll Modbus device on %s port %s with slave ID %s: %s. Moving on...' % (self.name, self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local', self.mb_config_item['port'], register_group['slave'], e), 'error')
+                print_log('[%s] Unable to poll Modbus device on %s port %s with slave ID %s: %s. Moving on...' % (self.name, self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local', self.mb_config_item['port'], register_group['slave'], e), 'error')
                 sleep(self.mb_config_item['timeout_seconds'])
                 continue
 
             # Throw an error when no MODBUS register value is received from the EVC, although it responds to the MODBUS poll.
-            if hasattr(result, 'registers') == False:
-                printLog('[%s] Unexpected response from Modbus device on %s port %s with slave ID %s.' % (self.name, self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local', self.mb_config_item['port'], register_group['slave']), 'error')
+            if hasattr(result, 'registers') is False:
+                print_log('[%s] Unexpected response from Modbus device on %s port %s with slave ID %s.' % (self.name, self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local', self.mb_config_item['port'], register_group['slave']), 'error')
                 sleep(self.mb_config_item['timeout_seconds'])
-                if self.mb_client.connected == False:
-                    printLog('[%s] Disconnected from %s port %s.' % (self.name, self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local', self.mb_config_item['port']), 'error')
+                if self.mb_client.connected is False:
+                    print_log('[%s] Disconnected from %s port %s.' % (self.name, self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local', self.mb_config_item['port']), 'error')
                     self.mb_client = mb_connect(self.mb_config_item['type'], host=self.mb_config_item['host'], port=self.mb_config_item['port'], mb_timeout=self.mb_config_item['timeout_seconds'])
                     self.current_log_timer = 0
                 break
@@ -109,7 +143,7 @@ class device_read(threading.Thread):
             else:
                 continue
 
-            register_group_address[register_group['group_id']] = register_group_values    
+            register_group_address[register_group['group_id']] = register_group_values
 
             # Convert MODBUS register value to the configured data type items.
             for register_conversion in self.mb_config_item['register_conversion']:
@@ -118,7 +152,7 @@ class device_read(threading.Thread):
                     if group_id == register_group['group_id']:
                         group_exists = 1
                         break
-                
+
                 if group_exists == 0:
                     continue
 
@@ -128,7 +162,7 @@ class device_read(threading.Thread):
                 for register_i in range(int(register_conversion['registers'][0]) + register_gap, int(register_conversion['registers'][1]) + register_gap + 1):
                     try:
                         current_registers.append(register_group_address[register_group['group_id']][register_i])
-                    except:
+                    except Exception:
                         continue
 
                 if len(current_registers) > 0:
@@ -151,11 +185,11 @@ class device_read(threading.Thread):
         items: dict; The dict of item list of the EVC current log to be retrieved. Default: None.
         insert_log: bool; Whether to insert a new record for a newly connected EVC device or not. Default: False.
         """
-        if insert_log == True:
+        if insert_log is True:
             try:
                 q_insert_current = "INSERT INTO " + self.db_tbl_prefix + "_current_log (deviceID) VALUES (%s)"
                 self.db_cur.execute(q_insert_current, (device_id,))
-            except:
+            except Exception:
                 return False
         else:
             try:
@@ -168,11 +202,12 @@ class device_read(threading.Thread):
 
                 self.db_cur.execute(q_update_current_log, items)
             except Exception as e:
-                printLog('[%s] send_current_log(): %s' % (self.name, e), 'error')
+                print_log(f"[{self.name}] send_current_log(): {e}", 'error')
                 return False
         return True
 
-    def send_archive_log(self, device_id: int, group_ids: list, kind: str, slave_id: int, retention: int = 0) -> dict:
+    def send_archive_log(self, device_id: int, group_ids: list, kind: str, slave_id: int,
+                         retention: int = 0) -> dict:
         """
         Send the received EVC archive log values to the database (or STDOUT for debugging purposes).
 
@@ -182,7 +217,8 @@ class device_read(threading.Thread):
         kind: str; Archive log kind (usually one of this: hourly, daily, monthly).
 
         Optional keyword arguments:
-        retention: int; The count of retention of the backlog EVC archive log from the newest to the oldest data. Default: 0.
+        retention: int; The count of retention of the backlog EVC archive log from the newest to
+                   the oldest data. Default: 0.
         slave_id: int; The EVC device MODBUS slave ID. Default: 1.
         """
         success_status = 0
@@ -190,72 +226,75 @@ class device_read(threading.Thread):
         if kind in ARCHIVE_LOG_LIST:
             # Get the configured group_id for the corresponding EVC archive log.
             archive_log_group_ids = self.get_log_group_ids(group_ids)
-            
+
             all_archive_log_items = []
 
             # Iterate once if no/zero retention is specified.
             for n_iter in range(0 if retention == 0 else 1, retention + 1):
                 if retention > 0:
-                    for group_id_index in range(0, len(archive_log_group_ids)):
-                        archive_log_group_ids[group_id_index]['gap'] = n_iter * archive_log_group_ids[group_id_index]['count']
+                    for group_id_index in enumerate(archive_log_group_ids):
+                        archive_log_group_ids[group_id_index[0]]['gap'] = n_iter * archive_log_group_ids[group_id_index[0]]['count']
 
                 # MODBUS poll the EVC device.
                 archive_log_items = self.get_evc_log(archive_log_group_ids, slave_id)['items']
 
                 # Send the received MODBUS responses to STDOUT for debugging purposes only.
                 if self.mb_config_item[kind]['debug'] is True:
-                    print(archive_log_items)
+                    print_log(archive_log_items)
 
                 if retention > 0:
-                    for group_id_index in range(0, len(archive_log_group_ids)):
-                        del archive_log_group_ids[group_id_index]['gap']
+                    for group_id_index in enumerate(archive_log_group_ids):
+                        del archive_log_group_ids[group_id_index[0]]['gap']
 
                 try:
-                    # Insert the received MODBUS responses (EVC archive log items value) into the database; otherwise, throw an error.
-                    q_insert_archive = "INSERT IGNORE INTO " + self.db_tbl_prefix + '_' + kind + " (deviceID, " + ', '.join(archive_log_items) + ") VALUES (" + str(device_id) + ", %(" + ")s, %(".join([item_name for item_name in archive_log_items]) + ")s)"
+                    # Insert the received MODBUS responses (EVC archive log items value) into the
+                    # database; otherwise, throw an error.
+                    q_insert_archive = "INSERT IGNORE INTO " + self.db_tbl_prefix + '_' + kind + " (deviceID, " + ', '.join(archive_log_items) + ") VALUES (" + str(device_id) + ", %(" + ")s, %(".join(list(archive_log_items)) + ")s)"
                     self.db_cur.execute(q_insert_archive, archive_log_items)
                     if self.db_cur.rowcount > 0:
                         all_archive_log_items.append(archive_log_items)
                 except Exception as e:
-                    printLog('[%s] send_archive_log(): %s during %s operation for device_id %s ' % (self.name, e, kind, device_id), 'error')
+                    print_log(f"[{self.name}] send_archive_log(): {e} during {kind} operation for device_id {device_id}.", 'error')
                     if retention == 0:
                         success_status = 2
                 else:
                     if retention == 0:
                         success_status = 1
-            
+
             # Return the EVC archive log items value along with the general success status.
             return {'items': all_archive_log_items, 'status': success_status}
+        return {'items': None, 'status': success_status}
 
     def run(self):
         # Open MariaDB database and then map the connection and the cursor for later use.
         [db_conn, self.db_cur] = db_open(self.db_conn_params)
 
         current_device_id = 0
-
+        archive_log_failed = ARCHIVE_LOG_FAILED.copy()
+        modbus_connected = False
         while not self.stop_me.is_set():
             # Pause between MODBUS device connection attempts if it fails.
-            if (self.mb_client is None or (self.mb_client is not None and hasattr(self.mb_client, 'connected') and self.mb_client.connected == False)) and round(millis()*1000) - self.current_log_timer >= int(self.mb_config_item['current_log']['scan_interval_ms']):
+            if (self.mb_client is None or (self.mb_client is not None and hasattr(self.mb_client, 'connected') and self.mb_client.connected is False)) and round(millis()*1000) - self.current_log_timer >= int(self.mb_config_item['current_log']['scan_interval_ms']):
 
-                if self.mb_client is not None and self.modbus_connected == True:
-                    printLog('[%s] Disconnected from %s.' % (self.name, self.mb_client), 'error')
-                    self.modbus_connected == False
+                if self.mb_client is not None and modbus_connected is True:
+                    print_log('[%s] Disconnected from %s.' % (self.name, self.mb_client), 'error')
+                    modbus_connected = False
 
                 self.mb_client = mb_connect(self.mb_config_item['type'], host=self.mb_config_item['host'], port=self.mb_config_item['port'], mb_timeout=self.mb_config_item['timeout_seconds'])
 
-                if self.mb_client.connected == True:
+                if self.mb_client.connected is True:
                     self.current_log_timer = 0
-                    self.modbus_connected = True
+                    modbus_connected = True
                 else:
                     # Reset timer, waiting for the next cycle.
                     self.current_log_timer = round(millis()*1000)
 
             # Poll the EVC device when the current log scan time deadline is met.
-            elif round(millis()*1000) - self.current_log_timer >= int(self.mb_config_item['current_log']['scan_interval_ms']) and self.mb_client.connected == True and self.is_alive():
+            elif round(millis()*1000) - self.current_log_timer >= int(self.mb_config_item['current_log']['scan_interval_ms']) and self.mb_client.connected is True and self.is_alive():
                 try:
                     db_conn.ping()
                 except DBOperationalError as e:
-                    printLog("[%s] Database connection error detected: %s. Reconnecting..." % (self.name, e), 'error')
+                    print_log("[%s] Database connection error detected: %s. Reconnecting..." % (self.name, e), 'error')
                     [db_conn, self.db_cur] = db_open(self.db_conn_params)
 
                 # Reset timer, waiting for the next cycle.
@@ -301,11 +340,11 @@ class device_read(threading.Thread):
                             current_dtu_str = dt_utc_to_current(register_items[self.evctime_reg['name']], self.evctime_reg['data_type'])
 
                             # Get hourly log when EVC hour has changed.
-                            if (last_dtu_str.hour != current_dtu_str.hour or self.archive_log_failed['hourly_log'] == True) and ARCHIVE_LOG_ENABLED['hourly_log'] == True:
+                            if (last_dtu_str.hour != current_dtu_str.hour or archive_log_failed['hourly_log'] is True) and ARCHIVE_LOG_ENABLED['hourly_log'] is True:
                                 if self.send_archive_log(current_device_id, self.mb_config_item['hourly_log']['group_ids'], 'hourly_log', current_slave_id)['status'] != 1:
-                                    self.archive_log_failed['hourly_log'] = True
+                                    archive_log_failed['hourly_log'] = True
                                 else:
-                                    self.archive_log_failed['hourly_log'] = False if self.archive_log_failed['hourly_log'] == True else self.archive_log_failed['hourly_log']
+                                    archive_log_failed['hourly_log'] = False if archive_log_failed['hourly_log'] is True else archive_log_failed['hourly_log']
 
                             # Substract the last current time of the EVC device by the configured day_start_hour, only if day_start_hour > 0, for the relativity effect of the daily log and the monthly log.
                             if self.mb_config_item['daily_log']['day_start_hour'] > 0:
@@ -313,18 +352,18 @@ class device_read(threading.Thread):
                                 current_dtu_str -= timedelta(hours=self.mb_config_item['daily_log']['day_start_hour'])
 
                             # Get daily log when EVC day has changed.
-                            if (last_dtu_str.day != current_dtu_str.day or self.archive_log_failed['daily_log'] == True) and ARCHIVE_LOG_ENABLED['daily_log'] == True:
+                            if (last_dtu_str.day != current_dtu_str.day or archive_log_failed['daily_log'] is True) and ARCHIVE_LOG_ENABLED['daily_log'] is True:
                                 if self.send_archive_log(current_device_id, self.mb_config_item['daily_log']['group_ids'], 'daily_log', current_slave_id)['status'] != 1:
-                                    self.archive_log_failed['daily_log'] = True
+                                    archive_log_failed['daily_log'] = True
                                 else:
-                                    self.archive_log_failed['daily_log'] = False if self.archive_log_failed['daily_log'] == True else self.archive_log_failed['daily_log']
+                                    archive_log_failed['daily_log'] = False if archive_log_failed['daily_log'] is True else archive_log_failed['daily_log']
 
                             # Get monthly log when EVC month has changed.
-                            if (last_dtu_str.month != current_dtu_str.month or self.archive_log_failed['monthly_log'] == True) and ARCHIVE_LOG_ENABLED['monthly_log'] == True:
+                            if (last_dtu_str.month != current_dtu_str.month or archive_log_failed['monthly_log'] is True) and ARCHIVE_LOG_ENABLED['monthly_log'] is True:
                                 if self.send_archive_log(current_device_id, self.mb_config_item['monthly_log']['group_ids'], 'monthly_log', current_slave_id)['status'] != 1:
-                                    self.archive_log_failed['monthly_log'] = True
+                                    archive_log_failed['monthly_log'] = True
                                 else:
-                                    self.archive_log_failed['monthly_log'] = False if self.archive_log_failed['monthly_log'] == True else self.archive_log_failed['monthly_log']
+                                    archive_log_failed['monthly_log'] = False if archive_log_failed['monthly_log'] is True else archive_log_failed['monthly_log']
 
                             # Add the last current time of the EVC device by the configured day_start_hour, only if day_start_hour > 0, to reverse the relativity effect above.
                             if self.mb_config_item['daily_log']['day_start_hour'] > 0:
@@ -338,7 +377,7 @@ class device_read(threading.Thread):
                             if self.db_cur.rowcount > 0:
                                 rows_request_log = self.db_cur.fetchall()
                                 for row_request_log in rows_request_log:
-                                    if row_request_log[2] <= self.mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['max_retention'] and ARCHIVE_LOG_ENABLED[ARCHIVE_LOG_LIST[row_request_log[1]]] == True:
+                                    if row_request_log[2] <= self.mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['max_retention'] and ARCHIVE_LOG_ENABLED[ARCHIVE_LOG_LIST[row_request_log[1]]] is True:
                                         if len(self.send_archive_log(current_device_id, self.mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['group_ids'], ARCHIVE_LOG_LIST[row_request_log[1]], current_slave_id, row_request_log[2])['items']) > 0:
                                             q_request_log_status = 1
                                         else:
@@ -354,12 +393,18 @@ class device_read(threading.Thread):
                             last_dtu = register_items[self.evctime_reg['name']]
             try:
                 sleep(0.1)
-            except:
+            except Exception:
                 break
-        
-        if self.mb_client is not None and hasattr(self.mb_client, 'connected') and self.mb_client.connected == True:
+
+        if (self.mb_client is not None and
+            hasattr(self.mb_client, 'connected') and
+            self.mb_client.connected is True):
             mb_close(self.mb_client)
+
         db_close(db_conn)
 
     def shutdown(self):
+        """
+        A simple function to shutdown a thread.
+        """
         self.stop_me.set()
