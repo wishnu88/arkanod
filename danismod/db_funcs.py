@@ -64,7 +64,7 @@ def create_table_exec(table_name: str, query: str, db_cur: object):
     """
     try:
         db_cur.execute(query)
-    except Exception as e:
+    except MySQLdb.Error as e:
         print_log(e, 'error')
     else:
         print_log(f"Table {table_name} is successfully created.")
@@ -87,7 +87,7 @@ def db_open(db_config: dict) -> list:
         except MySQLdb.Error as e:
             print_log(f"[{thread_name}] ERROR connecting to the database: {e}", 'critical')
             sleep(0.1)
-            if sys._getframe(1).f_code.co_name == 'db_config_check':
+            if sys._getframe(1).f_code.co_name == 'db_config_check': #pylint: disable=protected-access
                 return [None, None]
 
     return [db_conn, db_cur]
@@ -115,38 +115,48 @@ def db_config_check() -> dict | bool:
 
     # Read <base_dir>/config/db.yaml file for database configuration. Will be supporting multiple
     # databases and DBMS in the future.
-    with open('config/db.yaml', 'r', encoding='utf-8') as db_config:
-        print_log('Loading MariaDB database settings from config/db.yaml...')
-        db_config_check_var = db_config_detail = yaml.safe_load(db_config)
+    try:
+        with open('config/db.yaml', 'r', encoding='utf-8') as db_config:
+            print_log('Loading MariaDB database settings from config/db.yaml...')
+            db_config_check_var = db_config_detail = yaml.safe_load(db_config)
+    except OSError as e:
+        print_log(f"Unable to open config/db.yaml file: {e}")
+        return False
 
-        # START - DB config sanity check and default value.
-
+    # START - DB config sanity check and default value.
     if len(db_config_check_var) > 0:
-
         for db_item_index, db_instance in enumerate(db_config_check_var):
             for db_param_name in ['db_instance','db_host','db_username','db_password','db_name']:
                 if db_param_name not in db_instance:
                     error_len += 1
                     if db_param_name == 'db_instance':
-                        print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find the valid {db_param_name} configuration.", 'error')
+                        print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find the "
+                                  f"valid {db_param_name} configuration.", 'error')
                         break
-                    print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find {db_param_name} configuration for instance {db_instance['db_instance']}.", 'error')
+                    print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find "
+                              f"{db_param_name} configuration for instance "
+                              f"{db_instance['db_instance']}.", 'error')
                 elif db_param_name in db_instance and db_instance[db_param_name] == "":
                     if db_param_name == 'db_instance':
-                        print_log(f"[config/db.yaml - Item {db_item_index}] db_instance configuration cannot be empty.", 'error')
+                        print_log(f"[config/db.yaml - Item {db_item_index}] db_instance "
+                                  "configuration cannot be empty.", 'error')
                     else:
-                        print_log(f"[config/db.yaml - Item {db_item_index}] Invalid {db_param_name} configuration for instance {db_instance['db_instance']}.", 'error')
+                        print_log(f"[config/db.yaml - Item {db_item_index}] Invalid {db_param_name}"
+                                  f" configuration for instance {db_instance['db_instance']}.",
+                                  'error')
                     error_len += 1
 
             if 'db_port' not in db_instance:
-                print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find db_port configuration. Assuming TCP/3306 as the DB port.", 'debug')
+                print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find db_port "
+                          "configuration. Assuming TCP/3306 as the DB port.", 'debug')
                 db_config_detail[db_item_index]['db_port'] = 3306
             elif 'db_port' in db_instance:
                 if ((isinstance(db_instance['db_port'], int) and
                     (db_instance['db_port'] < 1 or
                     db_instance['db_port'] > 65535)) or
                     isinstance(db_instance['db_port'], int) is False):
-                    print_log(f"[config/db.yaml - Item {db_item_index}] Invalid db_port configuration.", 'error')
+                    print_log(f"[config/db.yaml - Item {db_item_index}] Invalid db_port "
+                              "configuration.", 'error')
                     error_len += 1
 
     if error_len > 0:
@@ -171,7 +181,8 @@ def db_config_check() -> dict | bool:
             for the_table in [*OPER_TABLES, *ARCHIVE_LOG_LIST]:
                 table_name = db_config['tbl_prefix'] + '_' + the_table
                 if not check_table_exists(table_name, db_config['db_name'], db_cur):
-                    print_log(f"Table {table_name} is not exists in database {db_config['db_name']}.", 'error')
+                    print_log(f"Table {table_name} is not exists in database "
+                              f"{db_config['db_name']}.", 'error')
                     error_len += 1
 
         if error_len == 0:
@@ -182,14 +193,16 @@ def db_config_check() -> dict | bool:
                 print_log(f"Missing triggers in database {db_config['db_name']}.", 'error')
                 error_len += 1
 
-            q_check_event = "SHOW EVENTS FROM " + db_config['db_name'] + " LIKE '" + db_config['tbl_prefix'] + "_NOT_UPDATE_CHECK'"
+            q_check_event = "SHOW EVENTS FROM " + db_config['db_name'] + " LIKE '" + \
+                db_config['tbl_prefix'] + "_NOT_UPDATE_CHECK'"
             db_cur.execute(q_check_event)
             if db_cur.rowcount != 1:
                 print_log(f"Missing event in database {db_config['db_name']}.", 'error')
                 error_len += 1
 
         if error_len > 0:
-            print_log("Run arkanod with the '--create-tables' option to solve the issue(s).", 'error')
+            print_log("Run arkanod with the '--create-tables' option to solve the issue(s).",
+                      'error')
             db_close(db_conn)
             return False
 

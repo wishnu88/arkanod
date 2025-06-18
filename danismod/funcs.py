@@ -78,7 +78,7 @@ def app_exit(exit_val: int = 0):
             print_log('Main thread is exiting...')
 
         sys.exit(exit_val)
-    except Exception as e:
+    except SystemError as e:
         print_log(f"Error(s) occurred in main thread, right before exit: {e}", 'error')
 
 def dt_utc_to_current(datetime_str: int, data_type: str = 'dt1'):

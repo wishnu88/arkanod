@@ -30,7 +30,7 @@ Depend heavily on pyModbus.
 """
 
 import threading
-from pymodbus import FramerType
+from pymodbus import FramerType, ModbusException
 from pymodbus.client import ModbusTcpClient, ModbusSerialClient
 from pymodbus.client.mixin import ModbusClientMixin
 from pymodbus.constants import Endian
@@ -72,7 +72,7 @@ def mb_connect(mb_type: str, port: str, host: str = None, mb_timeout: int = None
                                      else FramerType.SOCKET if mb_type == 'tcp'
                                      else FramerType.ASCII, timeout=mb_timeout)
             return mb_connect_exec()
-        except Exception as e:
+        except ModbusException as e:
             print_log(f"[{thread_name}] Unable to establish connection to {client}: {e}", 'error')
     elif mb_type == 'rtu':
         try:
@@ -82,7 +82,7 @@ def mb_connect(mb_type: str, port: str, host: str = None, mb_timeout: int = None
                                         else FramerType.SOCKET if mb_type == 'tcp'
                                         else FramerType.ASCII, timeout=mb_timeout)
             return mb_connect_exec()
-        except Exception as e:
+        except ModbusException as e:
             print_log(f"[{thread_name}] Unable to establish connection to {client}: {e}", 'error')
 
     # Must return the client object if an exception is raised.
