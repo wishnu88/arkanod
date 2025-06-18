@@ -212,6 +212,7 @@ class DeviceRead(threading.Thread):
                 q_insert_current = "INSERT INTO " + self.db_tbl_prefix + "_current_log (deviceID) VALUES (%s)"
                 self.db_cur.execute(q_insert_current, (device_id,))
             except DBError:
+                print_log(q_insert_current)
                 return False
         else:
             try:
@@ -221,9 +222,9 @@ class DeviceRead(threading.Thread):
                 for item_name in items:
                     q_update_items.append(f"{item_name} = %%({item_name})s")
                 q_update_current_log += ", ".join(q_update_items) + " WHERE deviceID = " + str(device_id)
-
                 self.db_cur.execute(q_update_current_log, items)
             except DBError as e:
+                print_log(q_update_current_log)
                 print_log(f"[{self.name}] send_current_log(): {e}", 'error')
                 return False
         return True
