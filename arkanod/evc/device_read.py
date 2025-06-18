@@ -209,8 +209,7 @@ class DeviceRead(threading.Thread):
         """
         if insert_log is True:
             try:
-                q_insert_current = "INSERT INTO " + self.db_tbl_prefix + "_current_log " \
-                    "(deviceID) VALUES (%s)"
+                q_insert_current = "INSERT INTO " + self.db_tbl_prefix + "_current_log (deviceID) VALUES (%s)"
                 self.db_cur.execute(q_insert_current, (device_id,))
             except DBError:
                 return False
@@ -221,8 +220,7 @@ class DeviceRead(threading.Thread):
                 q_update_items = []
                 for item_name in items:
                     q_update_items.append(f"{item_name} = %%({item_name})s")
-                q_update_current_log += ", ".join(q_update_items) + " WHERE deviceID = " + \
-                    str(device_id)
+                q_update_current_log += ", ".join(q_update_items) + " WHERE deviceID = " + str(device_id)
 
                 self.db_cur.execute(q_update_current_log, items)
             except DBError as e:
@@ -274,9 +272,7 @@ class DeviceRead(threading.Thread):
                 try:
                     # Insert the received MODBUS responses (EVC archive log items value) into the
                     # database; otherwise, throw an error.
-                    q_insert_archive = "INSERT IGNORE INTO " + self.db_tbl_prefix + '_' + kind + \
-                        " (deviceID, " + ', '.join(archive_log_items) + ") VALUES (" + \
-                            str(device_id) + ", %(" + ")s, %(".join(list(archive_log_items)) + ")s)"
+                    q_insert_archive = "INSERT IGNORE INTO " + self.db_tbl_prefix + '_' + kind + " (deviceID, " + ', '.join(archive_log_items) + ") VALUES (" + str(device_id) + ", %(" + ")s, %(".join(list(archive_log_items)) + ")s)"
                     self.db_cur.execute(q_insert_archive, archive_log_items)
                     if self.db_cur.rowcount > 0:
                         all_archive_log_items.append(archive_log_items)
