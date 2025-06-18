@@ -33,7 +33,7 @@ from danismod.db_funcs import db_open, db_close, check_table_exists, create_tabl
 from danismod.funcs import print_log, app_exit
 from .db_const import DATA_TYPE, OPER_TABLES, TRIGGER_REQ_DATALOG, EVENT_NOT_UPDATE_CHECK
 
-def init_create_tables(db_conn_params: dict, register_conversion_fields: dict,
+def init_create_tables(db_conn_details: dict, register_conversion_fields: dict,
                        mb_config_check_item: dict):
     """
     The procedure to initiate the database tables. It is usually fired when --create-tables is
@@ -46,11 +46,11 @@ def init_create_tables(db_conn_params: dict, register_conversion_fields: dict,
     """
     table_errors = 0
     db_conn_params = {
-        'host': db_conn_params['db_host'],
-        'port': db_conn_params['db_port'],
-        'user': db_conn_params['db_username'],
-        'password': db_conn_params['db_password'],
-        'database': db_conn_params['db_name'],
+        'host': db_conn_details['db_host'],
+        'port': db_conn_details['db_port'],
+        'user': db_conn_details['db_username'],
+        'password': db_conn_details['db_password'],
+        'database': db_conn_details['db_name'],
         'autocommit': True,
         # 'reconnect': True
     }
@@ -69,26 +69,26 @@ def init_create_tables(db_conn_params: dict, register_conversion_fields: dict,
 
     def create_trigger_update_check():
         # Create a trigger for the update_check table when it is updated.
-        q_trigger_req_datalog = TRIGGER_REQ_DATALOG % (db_conn_params['tbl_prefix'],
-                                                       table_name, db_conn_params['tbl_prefix'],
-                                                       db_conn_params['tbl_prefix'],
-                                                       db_conn_params['tbl_prefix'])
+        q_trigger_req_datalog = TRIGGER_REQ_DATALOG % (db_conn_details['tbl_prefix'],
+                                                       table_name, db_conn_details['tbl_prefix'],
+                                                       db_conn_details['tbl_prefix'],
+                                                       db_conn_details['tbl_prefix'])
         db_cur.execute(q_trigger_req_datalog)
 
     def create_trigger_current_log():
         # Create a trigger for the current_log table when it is updated.
-        db_cur.execute('CREATE TRIGGER IF NOT EXISTS `' + db_conn_params['tbl_prefix'] + \
+        db_cur.execute('CREATE TRIGGER IF NOT EXISTS `' + db_conn_details['tbl_prefix'] + \
                        '_UPDATE_CHECK` AFTER UPDATE ON `' + table_name + '` FOR EACH ROW UPDATE ' \
-                        + db_conn_params['tbl_prefix'] + '_update_check ' \
+                        + db_conn_details['tbl_prefix'] + '_update_check ' \
                         'SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND ' \
                         'Date_End IS NULL')
 
     # Iterate through the available tables needed for runtime operation.
     for oper_table_name, oper_table_fields in OPER_TABLES.items():
         index_failed = 0
-        table_name = db_conn_params['tbl_prefix'] + '_' + oper_table_name
+        table_name = db_conn_details['tbl_prefix'] + '_' + oper_table_name
 
-        if check_table_exists(table_name, db_conn_params['db_name'], db_cur):
+        if check_table_exists(table_name, db_conn_details['db_name'], db_cur):
             print_log(f"Table {table_name} is already exists, skipping.")
             if oper_table_name == 'update_check':
                 create_trigger_update_check()
@@ -125,10 +125,10 @@ def init_create_tables(db_conn_params: dict, register_conversion_fields: dict,
     # Iterate through the available tables needed for saving the EVC logs.
     for log_table in register_conversion_fields:
         index_failed = 0
-        table_name = db_conn_params['tbl_prefix'] + '_' + log_table
+        table_name = db_conn_details['tbl_prefix'] + '_' + log_table
         fields_created = []
         table_fields = []
-        if check_table_exists(table_name, db_conn_params['db_name'], db_cur):
+        if check_table_exists(table_name, db_conn_details['db_name'], db_cur):
             print_log(f"Table {table_name} is already exists, skipping.")
             continue
 
@@ -176,14 +176,14 @@ def init_create_tables(db_conn_params: dict, register_conversion_fields: dict,
 
     # Create a database event to obtain the EVC devices that are not updated.
     try:
-        q_not_update_check = EVENT_NOT_UPDATE_CHECK % (db_conn_params['tbl_prefix'],
-                                                       db_conn_params['tbl_prefix'],
-                                                       db_conn_params['tbl_prefix'],
-                                                       db_conn_params['tbl_prefix'],
-                                                       db_conn_params['tbl_prefix'])
+        q_not_update_check = EVENT_NOT_UPDATE_CHECK % (db_conn_details['tbl_prefix'],
+                                                       db_conn_details['tbl_prefix'],
+                                                       db_conn_details['tbl_prefix'],
+                                                       db_conn_details['tbl_prefix'],
+                                                       db_conn_details['tbl_prefix'])
         db_cur.execute(q_not_update_check)
     except DBError as e:
-        print_log(f"Failed to create event on database {db_conn_params['db_name']}: {e}", 'error')
+        print_log(f"Failed to create event on database {db_conn_details['db_name']}: {e}", 'error')
         table_errors += 1
 
     # Throw a warning explaining that there is at least one table failed to be created.
