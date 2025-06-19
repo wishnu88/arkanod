@@ -133,7 +133,7 @@ class DeviceRead(threading.Thread):
                           f"{e}. Moving on...", 'error')
                 mb_close(self.tparams['mb_client'])
                 sleep(self.mb_config_item['timeout_seconds'])
-                continue
+                break
 
             # Throw an error when no MODBUS register value is received from the EVC, although it
             # responds to the MODBUS poll.
