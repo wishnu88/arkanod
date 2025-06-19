@@ -139,14 +139,12 @@ class DeviceRead(threading.Thread):
             # responds to the MODBUS poll.
             if hasattr(result, 'registers') is False:
                 print_log(f"[{self.name}] Unexpected response from Modbus device on "
-                          f"{(self.mb_config_item['host'] if 'host' in self.mb_config_item
-                             else 'local')} port {self.mb_config_item['port']} with slave ID "
-                             f"{register_group['slave']}.", 'error')
+                          f"{self.tparams['mb_client']} with slave ID {register_group['slave']}.",
+                          'error')
                 sleep(self.mb_config_item['timeout_seconds'])
                 if self.tparams['mb_client'].connected is False:
-                    print_log(f"[{self.name}] Disconnected from "
-                              f"{(self.mb_config_item['host'] if 'host' in self.mb_config_item
-                                  else 'local')} port {self.mb_config_item['port']}.", 'error')
+                    print_log(f"[{self.name}] Disconnected from {self.tparams['mb_client']}.",
+                              'error')
                     self.tparams['mb_client'] = mb_connect(self.mb_config_item['type'],
                                                 host=self.mb_config_item['host'],
                                                 port=self.mb_config_item['port'],
