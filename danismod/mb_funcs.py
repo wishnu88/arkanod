@@ -121,7 +121,7 @@ def mb_convert_registers(registers: list, data_type: str, swap_type: str = "none
     elif data_type == 'uint64':
         data_type_class = ModbusClientMixin.DATATYPE.UINT64
     elif data_type == 'dt2':
-        hex_values = ["{:04x}".format(register) for register in registers]
+        hex_values = [f"{register:04x}" for register in registers]
         decoded = "".join(hex_values)
 
     return ModbusClientMixin.convert_from_registers(registers,

@@ -126,17 +126,25 @@ class DeviceRead(threading.Thread):
                         slave=current_slave_id)
             except ModbusException as e:
                 # Throw an error when the EVC didn't response to MODBUS poll.
-                print_log(f"[{self.name}] Unable to poll Modbus device on {self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local'} port {self.mb_config_item['port']} with slave ID {register_group['slave']}: {e}. Moving on...", 'error')
+                print_log(f"[{self.name}] Unable to poll Modbus device on "
+                          f"{(self.mb_config_item['host'] if 'host' in self.mb_config_item \
+                              else 'local')} port {self.mb_config_item['port']} with slave ID " \
+                              f"{register_group['slave']}: {e}. Moving on...", 'error')
                 sleep(self.mb_config_item['timeout_seconds'])
                 continue
 
             # Throw an error when no MODBUS register value is received from the EVC, although it
             # responds to the MODBUS poll.
             if hasattr(result, 'registers') is False:
-                print_log(f"[{self.name}] Unexpected response from Modbus device on {self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local'} port {self.mb_config_item['port']} with slave ID {register_group['slave']}.", 'error')
+                print_log(f"[{self.name}] Unexpected response from Modbus device on "
+                          f"{(self.mb_config_item['host'] if 'host' in self.mb_config_item \
+                             else 'local')} port {self.mb_config_item['port']} with slave ID " \
+                             f"{register_group['slave']}.", 'error')
                 sleep(self.mb_config_item['timeout_seconds'])
                 if self.mb_client.connected is False:
-                    print_log(f"[{self.name}] Disconnected from {self.mb_config_item['host'] if 'host' in self.mb_config_item else 'local'} port {self.mb_config_item['port']}.", 'error')
+                    print_log(f"[{self.name}] Disconnected from "
+                              f"{(self.mb_config_item['host'] if 'host' in self.mb_config_item \
+                                  else 'local')} port {self.mb_config_item['port']}.", 'error')
                     self.mb_client = mb_connect(self.mb_config_item['type'],
                                                 host=self.mb_config_item['host'],
                                                 port=self.mb_config_item['port'],
@@ -175,7 +183,8 @@ class DeviceRead(threading.Thread):
                     int(register_conversion['registers'][0]) + register_gap,
                     int(register_conversion['registers'][1]) + register_gap + 1):
                     try:
-                        current_registers.append(register_group_address[register_group['group_id']][register_i])
+                        current_registers.append(
+                            register_group_address[register_group['group_id']][register_i])
                     except IndexError:
                         continue
 
@@ -185,7 +194,10 @@ class DeviceRead(threading.Thread):
                         data_type = register_conversion['data_type'],
                         swap_type = (register_conversion['swap'] if 'swap' in register_conversion
                                      else None))
-                    register_items[current_slave_id][register_conversion['name']] = round(register_value, register_value_precision) if register_value_precision != "none" else register_value
+                    register_items[current_slave_id][register_conversion['name']] = (round(
+                        register_value,
+                        register_value_precision) if register_value_precision != "none"
+                        else register_value)
                     register_slave_ids[register_conversion['name']] = current_slave_id
 
         # Return the dict of already converted MODBUS registers data type along with the mapped
@@ -209,10 +221,11 @@ class DeviceRead(threading.Thread):
         """
         if insert_log is True:
             try:
-                q_insert_current = "INSERT INTO " + self.db_tbl_prefix + "_current_log (deviceID) VALUES (%s)"
+                q_insert_current = "INSERT INTO " + self.db_tbl_prefix + "_current_log (deviceID)" \
+                    " VALUES (%s)"
                 self.db_cur.execute(q_insert_current, (device_id,))
-            except DBError:
-                print_log(q_insert_current)
+            except DBError as e:
+                print_log(f"[{self.name}] send_current_log() insert: {e}", 'error')
                 return False
         else:
             try:
@@ -220,12 +233,12 @@ class DeviceRead(threading.Thread):
                 q_update_current_log = "UPDATE " + self.db_tbl_prefix + "_current_log SET "
                 q_update_items = []
                 for item_name in items:
-                    q_update_items.append(f"{item_name} = %%({item_name})s")
-                q_update_current_log += ", ".join(q_update_items) + " WHERE deviceID = " + str(device_id)
+                    q_update_items.append(f"{item_name} = %({item_name})s")
+                q_update_current_log += ", ".join(q_update_items) + " WHERE deviceID = " + \
+                    str(device_id)
                 self.db_cur.execute(q_update_current_log, items)
             except DBError as e:
-                print_log(q_update_current_log)
-                print_log(f"[{self.name}] send_current_log(): {e}", 'error')
+                print_log(f"[{self.name}] send_current_log() update: {e}", 'error')
                 return False
         return True
 
@@ -273,12 +286,15 @@ class DeviceRead(threading.Thread):
                 try:
                     # Insert the received MODBUS responses (EVC archive log items value) into the
                     # database; otherwise, throw an error.
-                    q_insert_archive = "INSERT IGNORE INTO " + self.db_tbl_prefix + '_' + kind + " (deviceID, " + ', '.join(archive_log_items) + ") VALUES (" + str(device_id) + ", %(" + ")s, %(".join(list(archive_log_items)) + ")s)"
+                    q_insert_archive = "INSERT IGNORE INTO " + self.db_tbl_prefix + '_' + kind + \
+                        " (deviceID, " + ', '.join(archive_log_items) + ") VALUES (" + \
+                            str(device_id) + ", %(" + ")s, %(".join(list(archive_log_items)) + ")s)"
                     self.db_cur.execute(q_insert_archive, archive_log_items)
                     if self.db_cur.rowcount > 0:
                         all_archive_log_items.append(archive_log_items)
                 except DBError as e:
-                    print_log(f"[{self.name}] send_archive_log(): {e} during {kind} operation for device_id {device_id}.", 'error')
+                    print_log(f"[{self.name}] send_archive_log(): {e} during {kind} operation " \
+                              f"for device_id {device_id}.", 'error')
                     if retention == 0:
                         success_status = 2
                 else:
@@ -336,7 +352,8 @@ class DeviceRead(threading.Thread):
                 if 'last_dtu' not in locals():
                     last_dtu = 0
 
-                current_log_group_ids = self.get_log_group_ids(self.mb_config_item['current_log']['group_ids'])
+                current_log_group_ids = self.get_log_group_ids(
+                    self.mb_config_item['current_log']['group_ids'])
                 current_log_items = self.get_evc_log(current_log_group_ids)
 
                 all_register_items = current_log_items['items']
@@ -349,17 +366,23 @@ class DeviceRead(threading.Thread):
 
                     if len(register_items) > 0:
                         if current_device_id == 0:
-                            q_get_device_id = "SELECT id FROM " + self.db_tbl_prefix + "_devices WHERE mbmaster_name = %s AND slaveID = %s LIMIT 1"
-                            self.db_cur.execute(q_get_device_id, (self.mb_config_item['name'], current_slave_id))
+                            q_get_device_id = "SELECT id FROM " + self.db_tbl_prefix + "_devices " \
+                                "WHERE mbmaster_name = %s AND slaveID = %s LIMIT 1"
+                            self.db_cur.execute(q_get_device_id, (self.mb_config_item['name'],
+                                                                  current_slave_id))
 
                             if self.db_cur.rowcount == 0:
-                                self.db_cur.execute("INSERT INTO " + self.db_tbl_prefix + "_devices (`mbmaster_name`, `slaveID`) VALUES (%s, %s)", (self.mb_config_item['name'], current_slave_id))
+                                self.db_cur.execute("INSERT INTO " + self.db_tbl_prefix + \
+                                                    "_devices (`mbmaster_name`, `slaveID`) " \
+                                                        "VALUES (%s, %s)",
+                                                    (self.mb_config_item['name'], current_slave_id))
                                 continue
 
                             rows_device_id = self.db_cur.fetchone()
 
                             current_device_id = rows_device_id[0]
-                            q_get_current = "SELECT id FROM " + self.db_tbl_prefix + "_current_log WHERE deviceID = %s"
+                            q_get_current = "SELECT id FROM " + self.db_tbl_prefix + \
+                                "_current_log WHERE deviceID = %s"
                             self.db_cur.execute(q_get_current, (current_device_id,))
 
                             if self.db_cur.rowcount == 0:
@@ -369,17 +392,29 @@ class DeviceRead(threading.Thread):
                         self.send_current_log(current_device_id, register_items)
 
                         if self.evctime_reg['name'] in register_items:
-                            last_dtu_str = dt_utc_to_current(last_dtu, self.evctime_reg['data_type'])
-                            current_dtu_str = dt_utc_to_current(register_items[self.evctime_reg['name']], self.evctime_reg['data_type'])
+                            last_dtu_str = dt_utc_to_current(last_dtu,
+                                                             self.evctime_reg['data_type'])
+                            current_dtu_str = dt_utc_to_current(
+                                register_items[self.evctime_reg['name']],
+                                self.evctime_reg['data_type'])
 
                             # Get hourly log when EVC hour has changed.
-                            if (last_dtu_str.hour != current_dtu_str.hour or archive_log_failed['hourly_log'] is True) and ARCHIVE_LOG_ENABLED['hourly_log'] is True:
-                                if self.send_archive_log(current_device_id, self.mb_config_item['hourly_log']['group_ids'], 'hourly_log', current_slave_id)['status'] != 1:
+                            if ((last_dtu_str.hour != current_dtu_str.hour or
+                                 archive_log_failed['hourly_log'] is True) and
+                                 ARCHIVE_LOG_ENABLED['hourly_log'] is True):
+                                if (self.send_archive_log(
+                                    current_device_id,
+                                    self.mb_config_item['hourly_log']['group_ids'],
+                                    'hourly_log', current_slave_id)['status'] != 1):
                                     archive_log_failed['hourly_log'] = True
                                 else:
-                                    archive_log_failed['hourly_log'] = False if archive_log_failed['hourly_log'] is True else archive_log_failed['hourly_log']
+                                    archive_log_failed['hourly_log'] = (
+                                        False if archive_log_failed['hourly_log'] is True
+                                        else archive_log_failed['hourly_log'])
 
-                            # Substract the last current time of the EVC device by the configured day_start_hour, only if day_start_hour > 0, for the relativity effect of the daily log and the monthly log.
+                            # Substract the last current time of the EVC device by the configured
+                            # day_start_hour, only if day_start_hour > 0, for the relativity effect
+                            # of the daily log and the monthly log.
                             if self.mb_config_item['daily_log']['day_start_hour'] > 0:
                                 last_dtu_str -= timedelta(hours=self.mb_config_item['daily_log']['day_start_hour'])
                                 current_dtu_str -= timedelta(hours=self.mb_config_item['daily_log']['day_start_hour'])
@@ -396,16 +431,23 @@ class DeviceRead(threading.Thread):
                                 if self.send_archive_log(current_device_id, self.mb_config_item['monthly_log']['group_ids'], 'monthly_log', current_slave_id)['status'] != 1:
                                     archive_log_failed['monthly_log'] = True
                                 else:
-                                    archive_log_failed['monthly_log'] = False if archive_log_failed['monthly_log'] is True else archive_log_failed['monthly_log']
+                                    archive_log_failed['monthly_log'] = (
+                                        False if archive_log_failed['monthly_log'] is True
+                                        else archive_log_failed['monthly_log'])
 
-                            # Add the last current time of the EVC device by the configured day_start_hour, only if day_start_hour > 0, to reverse the relativity effect above.
+                            # Add the last current time of the EVC device by the configured
+                            # day_start_hour, only if day_start_hour > 0, to reverse the relativity
+                            # effect above.
                             if self.mb_config_item['daily_log']['day_start_hour'] > 0:
                                 last_dtu_str += timedelta(hours=self.mb_config_item['daily_log']['day_start_hour'])
                                 current_dtu_str += timedelta(hours=self.mb_config_item['daily_log']['day_start_hour'])
 
                             # START - Check Request Log.
-                            q_check_request_log = "SELECT id, archiveLog, logRetention FROM " + self.db_tbl_prefix + "_request_log WHERE deviceID = %s AND requestStatus = 0 AND archiveLog >= 0 AND archiveLog < %s"
-                            self.db_cur.execute(q_check_request_log, (current_device_id, len(ARCHIVE_LOG_LIST)))
+                            q_check_request_log = "SELECT id, archiveLog, logRetention FROM " + \
+                                self.db_tbl_prefix + "_request_log WHERE deviceID = %s AND " \
+                                    "requestStatus = 0 AND archiveLog >= 0 AND archiveLog < %s"
+                            self.db_cur.execute(q_check_request_log, (current_device_id,
+                                                                      len(ARCHIVE_LOG_LIST)))
 
                             if self.db_cur.rowcount > 0:
                                 rows_request_log = self.db_cur.fetchall()
@@ -418,8 +460,11 @@ class DeviceRead(threading.Thread):
                                     else:
                                         q_request_log_status = 2
 
-                                    q_update_request_log = "UPDATE " + self.db_tbl_prefix + "_request_log SET requestStatus = %s WHERE id = %s"
-                                    self.db_cur.execute(q_update_request_log, (q_request_log_status, row_request_log[0]))
+                                    q_update_request_log = "UPDATE " + self.db_tbl_prefix + \
+                                        "_request_log SET requestStatus = %s WHERE id = %s"
+                                    self.db_cur.execute(q_update_request_log,
+                                                        (q_request_log_status,
+                                                         row_request_log[0]))
                             # END - Check Request Log.
 
                             # Time mark for the last EVC current log MODBUS poll.

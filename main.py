@@ -71,6 +71,7 @@ def signal_term_handler(threads: list):
     threads: list; The list of active threads.
     """
     def handler(signal, frame):
+        frame = None if isinstance(frame, object) else None
         for thread in threads:
             if thread.is_alive():
                 thread.shutdown()
@@ -198,7 +199,13 @@ def register_conversion_paramcheck(param_name: str,
                             }
 
                             if not regnum['start'] <= register_conversion_item['registers'][0] <= regnum['end'] or not regnum['start'] <= register_conversion_item['registers'][1] <= regnum['end']:
-                                print_log(f"[Item {item_index} - register_conversion - Group Item {conversion_item_index}] Invalid `registers` configuration for conversion name: {register_conversion_item['name']}. Modbus register address not in the correct range of group_id {curr_group_id} (should be between {regnum['start']} - {regnum['end']}).", 'error')
+                                print_log(f"[Item {item_index} - register_conversion - Group Item "
+                                          f"{conversion_item_index}] Invalid `registers` "
+                                          "configuration for conversion name: "
+                                          f"{register_conversion_item['name']}. Modbus register "
+                                          "address not in the correct range of group_id "
+                                          f"{curr_group_id} (should be between "
+                                          f"{regnum['start']} - {regnum['end']}).", 'error')
                                 error_len += 1
         elif param_name == 'data_type' and register_conversion_item['data_type'] not in DATA_TYPE_LIST:
             print_log(f"[Item {item_index} - register_conversion - Group Item "
@@ -213,7 +220,9 @@ def register_conversion_paramcheck(param_name: str,
                       'error')
             error_len += 1
         elif param_name == 'precision':
-            if isinstance(register_conversion_item['precision'], int) is False and (register_conversion_item['precision'] != 'none' or register_conversion_item['precision'] < 0):
+            if (isinstance(register_conversion_item['precision'], int) is False and
+                (register_conversion_item['precision'] != 'none' or
+                 register_conversion_item['precision'] < 0)):
                 print_log(f"[Item {item_index} - register_conversion - Group Item "
                           f"{conversion_item_index}] Invalid `precision` configuration for "
                           f"conversion name: {register_conversion_item['name']}. Minimum valid "
@@ -265,37 +274,48 @@ def main():
             if 'type' in mb_config_check_item:
                 if mb_config_check_item['type'] == 'rtu':
                     if 'port' not in mb_config_check_item:
-                        print_log(f"[{mb_config_files[item_index]}] No Modbus RTU device port defined.", 'error')
+                        print_log(f"[{mb_config_files[item_index]}] No Modbus RTU device port "
+                                  "defined.", 'error')
                         error_len += 1
                 elif mb_config_check_item['type'] == 'rtuovertcp':
                     if 'port' not in mb_config_check_item or 'host' not in mb_config_check_item:
-                        print_log(f"[{mb_config_files[item_index]}] No Modbus RTU device host and/or port defined.", 'error')
+                        print_log(f"[{mb_config_files[item_index]}] No Modbus RTU device host "
+                                  "and/or port defined.", 'error')
                         error_len += 1
                     elif isinstance(mb_config_check_item['port'], int) is False:
-                        print_log(f"[{mb_config_files[item_index]}] Invalid TCP port setting for Modbus RTU device.", 'error')
+                        print_log(f"[{mb_config_files[item_index]}] Invalid TCP port setting for "
+                                  "Modbus RTU device.", 'error')
                         error_len += 1
                 elif mb_config_check_item['type'] == 'tcp':
                     if 'port' not in mb_config_check_item or 'host' not in mb_config_check_item:
-                        print_log(f"[{mb_config_files[item_index]}] No Modbus TCP device host and/or port defined.", 'error')
+                        print_log(f"[{mb_config_files[item_index]}] No Modbus TCP device host "
+                                  "and/or port defined.", 'error')
                         error_len += 1
                 elif mb_config_check_item['type'] == 'ascii':
                     if 'port' not in mb_config_check_item:
-                        print_log(f"[{mb_config_files[item_index]}] No Modbus ASCII device port defined.", 'error')
+                        print_log(f"[{mb_config_files[item_index]}] No Modbus ASCII device port "
+                                  "defined.", 'error')
                         error_len += 1
                 else:
-                    print_log(f"[{mb_config_files[item_index]}] Invalid Modbus device type (type: ) defined.", 'error')
+                    print_log(f"[{mb_config_files[item_index]}] Invalid Modbus device type (type: )"
+                              " defined.", 'error')
                     error_len += 1
             else:
                 print_log(f"[{mb_config_files[item_index]}] No Modbus device type defined.")
                 if 'port' in mb_config_check_item:
                     if 'host' in mb_config_check_item:
-                        print_log(f"[{mb_config_files[item_index]}] Assuming Modbus device type of RTU over TCP (type: rtuovertcp) on %s port %s." % (item_index, mb_config_check_item['host'], mb_config_check_item['port']))
+                        print_log(f"[{mb_config_files[item_index]}] Assuming Modbus device type of "
+                                  "RTU over TCP (type: rtuovertcp) on "
+                                  f"{mb_config_check_item['host']} port "
+                                  f"{mb_config_check_item['port']}.")
                         mb_config_detail[item_index]['type'] = 'rtu'
                     else:
-                        print_log(f"[{mb_config_files[item_index]}] Assuming Modbus device type of RTU (type: rtu) on port %s." % (item_index, mb_config_check_item['port']))
+                        print_log(f"[{mb_config_files[item_index]}] Assuming Modbus device type of "
+                                  f"RTU (type: rtu) on port {mb_config_check_item['port']}.")
                         mb_config_detail[item_index]['type'] = 'rtu'
                 else:
-                    print_log(f"[{mb_config_files[item_index]}] Cannot assume Modbus device type.", 'error')
+                    print_log(f"[{mb_config_files[item_index]}] Cannot assume Modbus device type.",
+                              'error')
                     error_len += 1
 
             # END - Sanity check for type, port and host configuration.
@@ -303,10 +323,12 @@ def main():
             # START - Sanity check for name configuration.
 
             if 'name' not in mb_config_check_item:
-                print_log(f"[{mb_config_files[item_index]}] Modbus device name (name: unique) must be specified.", 'error')
+                print_log(f"[{mb_config_files[item_index]}] Modbus device name (name: unique) must "
+                          "be specified.", 'error')
                 error_len += 1
             elif mb_config_check_item['name'] == "":
-                print_log(f"[{mb_config_files[item_index]}] Modbus device name (name: unique) cannot be blank.", 'error')
+                print_log(f"[{mb_config_files[item_index]}] Modbus device name (name: unique) "
+                          "cannot be blank.", 'error')
                 error_len += 1
 
             # END - Sanity check for name configuration.
@@ -315,14 +337,21 @@ def main():
 
             if 'timeout_seconds' in mb_config_check_item:
                 if isinstance(mb_config_check_item['timeout_seconds'], int):
-                    if mb_config_check_item['timeout_seconds'] < 1 or mb_config_check_item['timeout_seconds'] > 300:
-                        print_log(f"[{mb_config_files[item_index]}] Invalid Modbus device connection timeout (timeout_seconds: ). Valid setting is between 1 and 300 seconds.", 'error')
+                    if (mb_config_check_item['timeout_seconds'] < 1 or
+                        mb_config_check_item['timeout_seconds'] > 300):
+                        print_log(f"[{mb_config_files[item_index]}] Invalid Modbus device "
+                                  "connection timeout (timeout_seconds: ). Valid setting is between"
+                                  " 1 and 300 seconds.", 'error')
                         error_len += 1
                 else:
-                    print_log(f"[{mb_config_files[item_index]}] Invalid Modbus device connection timeout (timeout_seconds: ). Valid setting is between 1 and 300 seconds.", 'error')
+                    print_log(f"[{mb_config_files[item_index]}] Invalid Modbus device connection "
+                              "timeout (timeout_seconds: ). Valid setting is between 1 and 300 "
+                              "seconds.", 'error')
                     error_len += 1
             else:
-                print_log(f"[{mb_config_files[item_index]}] Undefined Modbus device connection timeout (timeout_seconds: ). Using default setting (3 seconds).")
+                print_log(f"[{mb_config_files[item_index]}] Undefined Modbus device connection "
+                          "timeout (timeout_seconds: ). Using default setting (3 seconds).",
+                          'debug')
                 mb_config_detail[item_index]['timeout_seconds'] = 3
 
             # END - Sanity check for timeout_seconds configuration.
@@ -332,13 +361,19 @@ def main():
             if 'wait_milliseconds' in mb_config_check_item:
                 if isinstance(mb_config_check_item['wait_milliseconds'], int):
                     if mb_config_check_item['wait_milliseconds'] < 10 or mb_config_check_item['wait_milliseconds'] > 10000:
-                        print_log(f"[{mb_config_files[item_index]}] Invalid Modbus polling wait interval (wait_milliseconds: ). Valid setting is between 10 and 10000 milliseconds.", 'error')
+                        print_log(f"[{mb_config_files[item_index]}] Invalid Modbus polling wait "
+                                  "interval (wait_milliseconds: ). Valid setting is between 10 and"
+                                  " 10000 milliseconds.", 'error')
                         error_len += 1
                 else:
-                    print_log(f"[{mb_config_files[item_index]}] Invalid Modbus polling wait interval (wait_milliseconds: ). Valid setting is between 10 and 10000 milliseconds.", 'error')
+                    print_log(f"[{mb_config_files[item_index]}] Invalid Modbus polling wait "
+                              "interval (wait_milliseconds: ). Valid setting is between 10 and "
+                              "10000 milliseconds.", 'error')
                     error_len += 1
             else:
-                print_log(f"[{mb_config_files[item_index]}] Undefined Modbus polling wait interval (wait_milliseconds: ). Using default setting (100 milliseconds).")
+                print_log(f"[{mb_config_files[item_index]}] Undefined Modbus polling wait interval "
+                          "(wait_milliseconds: ). Using default setting (100 milliseconds).",
+                          'debug')
                 mb_config_detail[item_index]['wait_milliseconds'] = 100
 
             # END - Sanity check for wait_milliseconds configuration.
@@ -352,13 +387,18 @@ def main():
                 if 'scan_interval_ms' in mb_config_check_item['current_log']:
                     if isinstance(mb_config_check_item['current_log']['scan_interval_ms'], int):
                         if mb_config_check_item['current_log']['scan_interval_ms'] < 1000:
-                            print_log(f"[{mb_config_files[item_index]} - current_log] Invalid polling interval configuration (scan_interval_ms: ). Valid minimum setting is 1000 milliseconds.", 'error')
+                            print_log(f"[{mb_config_files[item_index]} - current_log] Invalid "
+                                      "polling interval configuration (scan_interval_ms: ). Valid "
+                                      "minimum setting is 1000 milliseconds.", 'error')
                             error_len += 1
                     else:
-                        print_log(f"[{mb_config_files[item_index]} - current_log] Invalid polling interval configuration (scan_interval_ms: ). Valid minimum setting is 1000 milliseconds.", 'error')
+                        print_log(f"[{mb_config_files[item_index]} - current_log] Invalid polling "
+                                  "interval configuration (scan_interval_ms: ). Valid minimum "
+                                  "setting is 1000 milliseconds.", 'error')
                         error_len += 1
                 else:
-                    print_log(f"[{mb_config_files[item_index]} - current_log] Unable to find polling interval configuration (scan_interval_ms: ).", 'error')
+                    print_log(f"[{mb_config_files[item_index]} - current_log] Unable to find "
+                              "polling interval configuration (scan_interval_ms: ).", 'error')
                     error_len += 1
 
                 # END - Sanity check for current_log --> scan_interval_ms configuration.
@@ -367,10 +407,12 @@ def main():
 
                 if 'evc_time_regname' in mb_config_check_item['current_log']:
                     if isinstance(mb_config_check_item['current_log']['evc_time_regname'], str) is False:
-                        print_log(f"[{mb_config_files[item_index]} - current_log] Invalid evc_time_regname configuration (evc_time_regname: ).", 'error')
+                        print_log(f"[{mb_config_files[item_index]} - current_log] Invalid "
+                                  "evc_time_regname configuration (evc_time_regname: ).", 'error')
                         error_len += 1
                 else:
-                    print_log(f"[{mb_config_files[item_index]} - current_log] Unable to find evc_time_regname configuration (evc_time_regname: ).", 'error')
+                    print_log(f"[{mb_config_files[item_index]} - current_log] Unable to find "
+                              "evc_time_regname configuration (evc_time_regname: ).", 'error')
                     error_len += 1
 
                 # END - Sanity check for current_log --> evc_time_regname configuration.
@@ -379,10 +421,13 @@ def main():
 
                 if 'debug' in mb_config_check_item['current_log']:
                     if isinstance(mb_config_check_item['current_log']['debug'], bool) is False:
-                        print_log(f"[{mb_config_files[item_index]} - current_log] Invalid debug configuration (debug: ). Valid configuration are boolean: True or False.", 'error')
+                        print_log(f"[{mb_config_files[item_index]} - current_log] Invalid debug "
+                                  "configuration (debug: ). Valid configuration are boolean: True"
+                                  " or False.", 'error')
                         error_len += 1
                 else:
-                    print_log(f"[{mb_config_files[item_index]} - current_log] No debug configuration found. Assuming debug: False.", 'debug')
+                    print_log(f"[{mb_config_files[item_index]} - current_log] No debug "
+                              "configuration found. Assuming debug: False.", 'debug')
                     mb_config_detail[item_index]['current_log']['debug'] = False
 
                 # END - Sanity check for current_log --> debug configuration.
@@ -391,10 +436,12 @@ def main():
 
                 if 'group_ids' in mb_config_check_item['current_log']:
                     if isinstance(mb_config_check_item['current_log']['group_ids'], list) is False:
-                        print_log(f"[{mb_config_files[item_index]} - current_log] Invalid group_ids configuration (group_ids: ). It should be a list.", 'error')
+                        print_log(f"[{mb_config_files[item_index]} - current_log] Invalid group_ids"
+                                  " configuration (group_ids: ). It should be a list.", 'error')
                         error_len += 1
                 else:
-                    print_log(f"[{mb_config_files[item_index]} - current_log] No group_ids configuration found.", 'error')
+                    print_log(f"[{mb_config_files[item_index]} - current_log] No group_ids "
+                              "configuration found.", 'error')
                     error_len += 1
 
                 # END - Sanity check for current_log --> group_ids configuration.
@@ -405,7 +452,8 @@ def main():
                     register_conversion_fields.update({'current_log': []})
 
             else:
-                print_log(f"[{mb_config_files[item_index]}] Unable to find current_log configuration.", 'error')
+                print_log(f"[{mb_config_files[item_index]}] Unable to find current_log "
+                          "configuration.", 'error')
                 error_len += 1
 
             # END - Sanity check for current_log configuration.
@@ -414,50 +462,67 @@ def main():
             for current_archive_log in ARCHIVE_LOG_LIST:
                 if current_archive_log in mb_config_check_item:
 
-                    # START - Sanity check for hourly_log, daily_log, monthly_log --> max_retention configuration.
+                    # START - Sanity check for hourly_log, daily_log, monthly_log -->
+                    # max_retention configuration.
 
                     if 'max_retention' in mb_config_check_item[current_archive_log]:
                         if isinstance(mb_config_check_item[current_archive_log]['max_retention'], int):
                             if mb_config_check_item[current_archive_log]['max_retention'] < 1:
-                                print_log(f"[{mb_config_files[item_index]} - {current_archive_log}] The minimum value of max_retention is 1. Disabling it.", 'debug')
+                                print_log(f"[{mb_config_files[item_index]} - {current_archive_log}]"
+                                          " The minimum value of max_retention is 1. Disabling it.",
+                                          'debug')
                                 mb_config_detail[item_index][current_archive_log]['max_retention'] = 0
                         else:
-                            print_log(f"[{mb_config_files[item_index]} - {current_archive_log}] Invalid max_retention configuration (max_retention: ) found. The minimum valid value should be 1.", 'error')
+                            print_log(f"[{mb_config_files[item_index]} - {current_archive_log}]"
+                                      " Invalid max_retention configuration (max_retention: ) "
+                                      "found. The minimum valid value should be 1.", 'error')
                             error_len += 1
                     else:
                         mb_config_detail[item_index][current_archive_log]['max_retention'] = 0
 
-                    # END - Sanity check for hourly_log, daily_log, monthly_log --> max_retention configuration.
+                    # END - Sanity check for hourly_log, daily_log, monthly_log --> max_retention
+                    # configuration.
 
-                    # START - Sanity check for hourly_log, daily_log, monthly_log --> debug configuration.
+                    # START - Sanity check for hourly_log, daily_log, monthly_log --> debug
+                    # configuration.
 
                     if 'debug' in mb_config_check_item[current_archive_log]:
                         if isinstance(mb_config_check_item[current_archive_log]['debug'], bool) is False:
-                            print_log(f"[{mb_config_files[item_index]} - {current_archive_log}] Invalid debug configuration (debug: ). The valid value are boolean: true or false.", 'error')
+                            print_log(f"[{mb_config_files[item_index]} - {current_archive_log}] "
+                                      "Invalid debug configuration (debug: ). The valid value are "
+                                      "boolean: true or false.", 'error')
                             error_len += 1
                     else:
-                        print_log(f"[{mb_config_files[item_index]} - {current_archive_log}] No debug configuration found. Assuming debug: False.", 'debug')
+                        print_log(f"[{mb_config_files[item_index]} - {current_archive_log}] No "
+                                  "debug configuration found. Assuming debug: False.", 'debug')
                         mb_config_detail[item_index][current_archive_log]['debug'] = False
 
-                    # END - Sanity check for hourly_log, daily_log, monthly_log --> debug configuration.
+                    # END - Sanity check for hourly_log, daily_log, monthly_log --> debug
+                    # configuration.
 
-                    # START - Sanity check for hourly_log, daily_log, monthly_log --> group_ids configuration.
+                    # START - Sanity check for hourly_log, daily_log, monthly_log --> group_ids
+                    # configuration.
 
                     if 'group_ids' in mb_config_check_item[current_archive_log]:
                         if isinstance(mb_config_check_item[current_archive_log]['group_ids'], list) is False:
-                            print_log(f"[{mb_config_files[item_index]} - {current_archive_log}] Invalid group_ids configuration (group_ids: ). It should be a list.", 'error')
+                            print_log(f"[{mb_config_files[item_index]} - {current_archive_log}] "
+                                      "Invalid group_ids configuration (group_ids: ). It should be "
+                                      "a list.", 'error')
                             error_len += 1
                     else:
-                        print_log(f"[{mb_config_files[item_index]} - current_log] No group_ids configuration found.", 'error')
+                        print_log(f"[{mb_config_files[item_index]} - current_log] No group_ids "
+                                  "configuration found.", 'error')
                         error_len += 1
 
-                    # END - Sanity check for hourly_log, daily_log, monthly_log --> group_ids configuration.
+                    # END - Sanity check for hourly_log, daily_log, monthly_log --> group_ids
+                    # configuration.
 
                     # Create group_id list for hourly_log, daily_log, monthly_log.
                     group_id_list[current_archive_log] = mb_config_check_item[current_archive_log]['group_ids']
 
                 else:
-                    print_log(f"[{mb_config_files[item_index]}] Unable to find {current_archive_log} configuration. Disabling it.")
+                    print_log(f"[{mb_config_files[item_index]}] Unable to find "
+                              f"{current_archive_log} configuration. Disabling it.")
                     ARCHIVE_LOG_ENABLED[current_archive_log] = False
 
             # END - Sanity check for hourly_log, daily_log, monthly_log configuration.
@@ -467,19 +532,29 @@ def main():
             if 'register_group' in mb_config_check_item:
                 if isinstance(mb_config_check_item['register_group'], list) is True:
                     for grp_item_index, register_group_item in enumerate(mb_config_check_item['register_group']):
-                        # START - Sanity check for group_id, slave, address, count, type configuration.
+                        # START - Sanity check for group_id, slave, address, count, type c
+                        # onfiguration.
                         for param_name in ['group_id',
                                                 'slave',
                                                 'address',
                                                 'count',
                                                 'type']:
-                            error_len += register_group_paramcheck(param_name = param_name, grp_item_index = grp_item_index, register_group_item=register_group_item, mb_config_check_item=mb_config_check_item, item_index=item_index)
-                        # END - Sanity check for group_id, slave, address, count, type configuration.
+                            error_len += register_group_paramcheck(
+                                param_name = param_name,
+                                grp_item_index = grp_item_index,
+                                register_group_item=register_group_item,
+                                mb_config_check_item=mb_config_check_item,
+                                item_index=item_index)
+                        # END - Sanity check for group_id, slave, address, count, type
+                        # configuration.
                 else:
-                    print_log(f"[{mb_config_files[item_index]}] Invalid register_group configuration (register_group: ). It should be a list.", 'error')
+                    print_log(f"[{mb_config_files[item_index]}] Invalid register_group "
+                              "configuration (register_group: ). It should be a list.",
+                              'error')
                     error_len += 1
             else:
-                print_log(f"[{mb_config_files[item_index]}] Unable to find register_group configuration.", 'error')
+                print_log(f"[{mb_config_files[item_index]}] Unable to find register_group "
+                          "configuration.", 'error')
                 error_len += 1
 
             # END - Sanity check for register_conversion configuration.
@@ -490,7 +565,8 @@ def main():
 
                 if isinstance(mb_config_check_item['register_conversion'], list) is True:
                     for grp_item_index, register_conversion_item in enumerate(mb_config_check_item['register_conversion']):
-                        # START - Sanity check for name, group_ids, registers, data_type, swap, precision configuration.
+                        # START - Sanity check for name, group_ids, registers, data_type, swap,
+                        # precision configuration.
 
                         for param_name in ['name',
                                             'group_ids',
@@ -498,7 +574,13 @@ def main():
                                             'data_type',
                                             'swap',
                                             'precision']:
-                            error_len += register_conversion_paramcheck(param_name=param_name, conversion_item_index=grp_item_index, mb_config_check_item=mb_config_check_item, register_conversion_item=register_conversion_item, mb_config_detail=mb_config_detail, item_index=item_index)
+                            error_len += register_conversion_paramcheck(
+                                param_name=param_name,
+                                conversion_item_index=grp_item_index,
+                                mb_config_check_item=mb_config_check_item,
+                                register_conversion_item=register_conversion_item,
+                                mb_config_detail=mb_config_detail,
+                                item_index=item_index)
 
                         if error_len == 0 and register_conversion_item['name'] == mb_config_check_item['current_log']['evc_time_regname']:
                             evctime_reg[mb_config_check_item['name']] = {
@@ -506,7 +588,8 @@ def main():
                                 'data_type': register_conversion_item['data_type']
                             }
 
-                        # END - Sanity check for name, group_ids, registers, data_type, swap, precision configuration.
+                        # END - Sanity check for name, group_ids, registers, data_type, swap,
+                        # precision configuration.
 
                         # List items for current_log and archive log table creation.
                         if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
@@ -528,10 +611,13 @@ def main():
                                         'item': register_conversion_item['name'],
                                         'data_type': register_conversion_item['data_type']})
                 else:
-                    print_log(f"[{mb_config_files[item_index]}] Invalid register_conversion configuration (register_conversion: ). It should be a list.", 'error')
+                    print_log(f"[{mb_config_files[item_index]}] Invalid register_conversion "
+                              "configuration (register_conversion: ). It should be a list.",
+                              'error')
                     error_len += 1
             else:
-                print_log(f"[{mb_config_files[item_index]}] Unable to find register_conversion configuration.", 'error')
+                print_log(f"[{mb_config_files[item_index]}] Unable to find register_conversion "
+                          "configuration.", 'error')
                 error_len += 1
 
             # END - Sanity check for register_conversion configuration.
