@@ -55,9 +55,11 @@ class DeviceRead(threading.Thread):
             'autocommit': True,
             # 'reconnect': True
         }
-        self.stop_me = threading.Event()
+        self.tparams = {
+            'stop_me': threading.Event(),
+            'mb_client': None
+        }
         self.db_cur = None
-        self.mb_client = None
         self.mb_config_item = mb_config_item
         self.db_tbl_prefix = db_params['tbl_prefix']
         self.evctime_reg = evctime_reg
@@ -115,21 +117,21 @@ class DeviceRead(threading.Thread):
             try:
                 # Read from the EVC using MODBUS protocol.
                 if register_group['type'] == "input":
-                    result = self.mb_client.read_input_registers(
+                    result = self.tparams['mb_client'].read_input_registers(
                         address=int(register_group['address']) + register_gap,
                         count=register_group['count'],
                         slave=current_slave_id)
                 elif register_group['type'] == "holding":
-                    result = self.mb_client.read_holding_registers(
+                    result = self.tparams['mb_client'].read_holding_registers(
                         address=int(register_group['address']) + register_gap,
                         count=register_group['count'],
                         slave=current_slave_id)
             except ModbusException as e:
                 # Throw an error when the EVC didn't response to MODBUS poll.
                 print_log(f"[{self.name}] Unable to poll Modbus device on "
-                          f"{(self.mb_config_item['host'] if 'host' in self.mb_config_item \
-                              else 'local')} port {self.mb_config_item['port']} with slave ID " \
-                              f"{register_group['slave']}: {e}. Moving on...", 'error')
+                          f"{self.tparams['mb_client']} with slave ID {register_group['slave']}: "
+                          f"{e}. Moving on...", 'error')
+                mb_close(self.tparams['mb_client'])
                 sleep(self.mb_config_item['timeout_seconds'])
                 continue
 
@@ -141,11 +143,11 @@ class DeviceRead(threading.Thread):
                              else 'local')} port {self.mb_config_item['port']} with slave ID " \
                              f"{register_group['slave']}.", 'error')
                 sleep(self.mb_config_item['timeout_seconds'])
-                if self.mb_client.connected is False:
+                if self.tparams['mb_client'].connected is False:
                     print_log(f"[{self.name}] Disconnected from "
                               f"{(self.mb_config_item['host'] if 'host' in self.mb_config_item \
                                   else 'local')} port {self.mb_config_item['port']}.", 'error')
-                    self.mb_client = mb_connect(self.mb_config_item['type'],
+                    self.tparams['mb_client'] = mb_connect(self.mb_config_item['type'],
                                                 host=self.mb_config_item['host'],
                                                 port=self.mb_config_item['port'],
                                                 mb_timeout=self.mb_config_item['timeout_seconds'])
@@ -306,30 +308,32 @@ class DeviceRead(threading.Thread):
         return {'items': None, 'status': success_status}
 
     def run(self):
-        # Open MariaDB database and then map the connection and the cursor for later use.
+        # Open database and then map the connection and the cursor for later use.
         [db_conn, self.db_cur] = db_open(self.db_conn_params)
 
         current_device_id = 0
         archive_log_failed = ARCHIVE_LOG_FAILED.copy()
         modbus_connected = False
-        while not self.stop_me.is_set():
+        while not self.tparams['stop_me'].is_set():
             # Pause between MODBUS device connection attempts if it fails.
             scan_interval_ms = int(self.mb_config_item['current_log']['scan_interval_ms'])
-            if ((self.mb_client is None or
-                (self.mb_client is not None and hasattr(self.mb_client, 'connected') and
-                self.mb_client.connected is False)) and
+            if ((self.tparams['mb_client'] is None or
+                (self.tparams['mb_client'] is not None and
+                 hasattr(self.tparams['mb_client'], 'connected') and
+                 self.tparams['mb_client'].connected is False)) and
                 round(millis()*1000) - self.current_log_timer >= scan_interval_ms):
 
-                if self.mb_client is not None and modbus_connected is True:
-                    print_log(f"[{self.name}] Disconnected from {self.mb_client}.", 'error')
+                if self.tparams['mb_client'] is not None and modbus_connected is True:
+                    print_log(f"[{self.name}] Disconnected from {self.tparams['mb_client']}.",
+                              'error')
                     modbus_connected = False
 
-                self.mb_client = mb_connect(self.mb_config_item['type'],
+                self.tparams['mb_client'] = mb_connect(self.mb_config_item['type'],
                                             host=self.mb_config_item['host'],
                                             port=self.mb_config_item['port'],
                                             mb_timeout=self.mb_config_item['timeout_seconds'])
 
-                if self.mb_client.connected is True:
+                if self.tparams['mb_client'].connected is True:
                     self.current_log_timer = 0
                     modbus_connected = True
                 else:
@@ -338,7 +342,7 @@ class DeviceRead(threading.Thread):
 
             # Poll the EVC device when the current log scan time deadline is met.
             elif ((round(millis()*1000) - self.current_log_timer >= scan_interval_ms) and
-                  self.mb_client.connected is True and self.is_alive()):
+                  self.tparams['mb_client'].connected is True and self.is_alive()):
                 try:
                     db_conn.ping()
                 except DBError as e:
@@ -408,9 +412,8 @@ class DeviceRead(threading.Thread):
                                     'hourly_log', current_slave_id)['status'] != 1):
                                     archive_log_failed['hourly_log'] = True
                                 else:
-                                    archive_log_failed['hourly_log'] = (
-                                        False if archive_log_failed['hourly_log'] is True
-                                        else archive_log_failed['hourly_log'])
+                                    if archive_log_failed['hourly_log'] is True:
+                                        archive_log_failed['hourly_log'] = False
 
                             # Substract the last current time of the EVC device by the configured
                             # day_start_hour, only if day_start_hour > 0, for the relativity effect
@@ -424,16 +427,16 @@ class DeviceRead(threading.Thread):
                                 if self.send_archive_log(current_device_id, self.mb_config_item['daily_log']['group_ids'], 'daily_log', current_slave_id)['status'] != 1:
                                     archive_log_failed['daily_log'] = True
                                 else:
-                                    archive_log_failed['daily_log'] = False if archive_log_failed['daily_log'] is True else archive_log_failed['daily_log']
+                                    if archive_log_failed['daily_log'] is True:
+                                        archive_log_failed['daily_log'] = False
 
                             # Get monthly log when EVC month has changed.
                             if (last_dtu_str.month != current_dtu_str.month or archive_log_failed['monthly_log'] is True) and ARCHIVE_LOG_ENABLED['monthly_log'] is True:
                                 if self.send_archive_log(current_device_id, self.mb_config_item['monthly_log']['group_ids'], 'monthly_log', current_slave_id)['status'] != 1:
                                     archive_log_failed['monthly_log'] = True
                                 else:
-                                    archive_log_failed['monthly_log'] = (
-                                        False if archive_log_failed['monthly_log'] is True
-                                        else archive_log_failed['monthly_log'])
+                                    if archive_log_failed['monthly_log'] is True:
+                                        archive_log_failed['monthly_log'] = False
 
                             # Add the last current time of the EVC device by the configured
                             # day_start_hour, only if day_start_hour > 0, to reverse the relativity
@@ -471,10 +474,10 @@ class DeviceRead(threading.Thread):
                             last_dtu = register_items[self.evctime_reg['name']]
             sleep(0.1)
 
-        if (self.mb_client is not None and
-            hasattr(self.mb_client, 'connected') and
-            self.mb_client.connected is True):
-            mb_close(self.mb_client)
+        if (self.tparams['mb_client'] is not None and
+            hasattr(self.tparams['mb_client'], 'connected') and
+            self.tparams['mb_client'].connected is True):
+            mb_close(self.tparams['mb_client'])
 
         db_close(db_conn)
 
@@ -482,4 +485,4 @@ class DeviceRead(threading.Thread):
         """
         A simple function to shutdown a thread.
         """
-        self.stop_me.set()
+        self.tparams['stop_me'].set()

@@ -101,7 +101,7 @@ def db_close(db_conn: object):
     """
     thread_name = threading.current_thread().name
     if isinstance(db_conn, object):
-        print_log(f"[{thread_name}] Closing MariaDB database...")
+        print_log(f"[{thread_name}] Closing database...")
         db_conn.close()
         del db_conn
 
@@ -117,7 +117,7 @@ def db_config_check() -> dict | bool:
     # databases and DBMS in the future.
     try:
         with open('config/db.yaml', 'r', encoding='utf-8') as db_config:
-            print_log('Loading MariaDB database settings from config/db.yaml...')
+            print_log('Loading database settings from config/db.yaml...')
             db_config_check_var = db_config_detail = yaml.safe_load(db_config)
     except OSError as e:
         print_log(f"Unable to open config/db.yaml file: {e}")
