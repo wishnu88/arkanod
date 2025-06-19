@@ -139,13 +139,13 @@ class DeviceRead(threading.Thread):
             # responds to the MODBUS poll.
             if hasattr(result, 'registers') is False:
                 print_log(f"[{self.name}] Unexpected response from Modbus device on "
-                          f"{(self.mb_config_item['host'] if 'host' in self.mb_config_item \
-                             else 'local')} port {self.mb_config_item['port']} with slave ID " \
+                          f"{(self.mb_config_item['host'] if 'host' in self.mb_config_item
+                             else 'local')} port {self.mb_config_item['port']} with slave ID "
                              f"{register_group['slave']}.", 'error')
                 sleep(self.mb_config_item['timeout_seconds'])
                 if self.tparams['mb_client'].connected is False:
                     print_log(f"[{self.name}] Disconnected from "
-                              f"{(self.mb_config_item['host'] if 'host' in self.mb_config_item \
+                              f"{(self.mb_config_item['host'] if 'host' in self.mb_config_item
                                   else 'local')} port {self.mb_config_item['port']}.", 'error')
                     self.tparams['mb_client'] = mb_connect(self.mb_config_item['type'],
                                                 host=self.mb_config_item['host'],
@@ -295,7 +295,7 @@ class DeviceRead(threading.Thread):
                     if self.db_cur.rowcount > 0:
                         all_archive_log_items.append(archive_log_items)
                 except DBError as e:
-                    print_log(f"[{self.name}] send_archive_log(): {e} during {kind} operation " \
+                    print_log(f"[{self.name}] send_archive_log(): {e} during {kind} operation "
                               f"for device_id {device_id}.", 'error')
                     if retention == 0:
                         success_status = 2

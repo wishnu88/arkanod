@@ -188,8 +188,8 @@ def init_create_tables(db_conn_details: dict, register_conversion_fields: dict,
 
     # Throw a warning explaining that there is at least one table failed to be created.
     if table_errors > 0:
-        print_log("WARNING: Not all table created successfully. Run this again after fixing the " \
-        "error(s).", 'error')
+        print_log("WARNING: Not all table created successfully. Run this again after fixing the "
+                  "error(s).", 'error')
 
     db_close(db_conn)
     app_exit(table_errors)
