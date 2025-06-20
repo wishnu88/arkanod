@@ -224,7 +224,7 @@ class DeviceRead(threading.Thread):
                 q_insert_current = "INSERT INTO " + self.db_tbl_prefix + "_current_log (deviceID)" \
                     " VALUES (%s)"
                 self.db_cur.execute(q_insert_current, (device_id,))
-            except DBError as e:
+            except (KeyError, DBError) as e:
                 print_log(f"[{self.name}] send_current_log() insert: {e}", 'error')
                 return False
         else:
@@ -237,7 +237,7 @@ class DeviceRead(threading.Thread):
                 q_update_current_log += ", ".join(q_update_items) + " WHERE deviceID = " + \
                     str(device_id)
                 self.db_cur.execute(q_update_current_log, items)
-            except DBError as e:
+            except (KeyError, DBError) as e:
                 print_log(f"[{self.name}] send_current_log() update: {e}", 'error')
                 return False
         return True
@@ -292,7 +292,7 @@ class DeviceRead(threading.Thread):
                     self.db_cur.execute(q_insert_archive, archive_log_items)
                     if self.db_cur.rowcount > 0:
                         all_archive_log_items.append(archive_log_items)
-                except DBError as e:
+                except (DBError, KeyError) as e:
                     print_log(f"[{self.name}] send_archive_log(): {e} during {kind} operation "
                               f"for device_id {device_id}.", 'error')
                     if retention == 0:
@@ -343,7 +343,7 @@ class DeviceRead(threading.Thread):
                   self.tparams['mb_client'].connected is True and self.is_alive()):
                 try:
                     db_conn.ping()
-                except DBError as e:
+                except (KeyError, DBError) as e:
                     print_log(f"[{self.name}] Database connection error detected: {e}. "
                               "Reconnecting...", 'error')
                     [db_conn, self.db_cur] = db_open(self.db_conn_params)

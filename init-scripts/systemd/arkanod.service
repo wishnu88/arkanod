@@ -6,7 +6,7 @@ After=mosquitto.service
 [Service]
 Type=notify
 Environment=PYTHONUNBUFFERED=true
-Restart=on-failure
+Restart=always
 WorkingDirectory=/opt/arkanos/arkanod
 ExecStart=/opt/arkanos/arkanod/main.py
 ExecReload=/bin/kill -HUP $MAINPID
