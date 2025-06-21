@@ -56,7 +56,7 @@ END"""
 EVENT_NOT_UPDATE_CHECK = """
 CREATE EVENT IF NOT EXISTS `%s_NOT_UPDATE_CHECK` ON SCHEDULE EVERY 1 HOUR STARTS '2021-12-25 00:00:00' ON COMPLETION NOT PRESERVE ENABLE DO BEGIN
     DELETE FROM `%s_update_check` WHERE Date_End IS NOT NULL;
-    INSERT INTO %s_update_check (`deviceID`,`Date_Start`) SELECT deviceID, LastUpdated FROM %s_current_log WHERE (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(LastUpdated)) > 3600 AND deviceID NOT IN (SELECT deviceID FROM %s_update_check);
+    INSERT INTO %s_update_check (`deviceID`,`Date_Start`) SELECT deviceID, LastUpdated FROM %s_current_log WHERE (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(LastUpdated)) >= 3600 AND deviceID NOT IN (SELECT deviceID FROM %s_update_check);
 END """
 
 DATA_TYPE = {
