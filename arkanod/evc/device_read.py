@@ -29,6 +29,7 @@ License:
 The MODBUS DeviceRead class file.
 """
 import threading
+from struct import error as StructError
 from time import (sleep, time as millis)
 from datetime import timedelta
 from MySQLdb import Error as DBError
@@ -100,6 +101,7 @@ class DeviceRead(threading.Thread):
         register_group_address = {}
         register_items = {}
         register_slave_ids = {}
+        read_answered = 0
 
         for register_group in register_groups:
 
@@ -126,14 +128,14 @@ class DeviceRead(threading.Thread):
                         address=int(register_group['address']) + register_gap,
                         count=register_group['count'],
                         slave=current_slave_id)
-            except ModbusException as e:
+            except (ModbusException, StructError) as e:
                 # Throw an error when the EVC didn't response to MODBUS poll.
                 print_log(f"[{self.name}] Unable to poll Modbus device on "
                           f"{self.tparams['mb_client']} with slave ID {register_group['slave']}: "
                           f"{e}. Moving on...", 'error')
-                mb_close(self.tparams['mb_client'])
-                sleep(self.mb_config_item['timeout_seconds'])
-                break
+                continue
+            else:
+                read_answered += 1
 
             # Throw an error when no MODBUS register value is received from the EVC, although it
             # responds to the MODBUS poll.
@@ -200,6 +202,11 @@ class DeviceRead(threading.Thread):
                         else register_value)
                     register_slave_ids[register_conversion['name']] = current_slave_id
 
+        # Only disconnect when slave_id is not set and no answer is received so that the
+        # archive_log operation will not break the multi-slave MODBUS connection.
+        if slave_id is None and read_answered == 0:
+            mb_close(self.tparams['mb_client'])
+
         # Return the dict of already converted MODBUS registers data type along with the mapped
         # device ID.
         return {'items': register_items if slave_id is None else register_items[slave_id],
@@ -242,8 +249,7 @@ class DeviceRead(threading.Thread):
                 return False
         return True
 
-    def send_archive_log(self, device_id: int, group_ids: list, kind: str, slave_id: int,
-                         retention: int = 0) -> dict:
+    def send_archive_log(self, device_id: int, kind: str, slave_id: int, retention: int=0) -> dict:
         """
         Send the received EVC archive log values to the database (or STDOUT for debugging purposes).
 
@@ -259,51 +265,52 @@ class DeviceRead(threading.Thread):
         """
         success_status = 0
 
-        if kind in ARCHIVE_LOG_LIST:
-            # Get the configured group_id for the corresponding EVC archive log.
-            archive_log_group_ids = self.get_log_group_ids(group_ids)
+        if kind not in ARCHIVE_LOG_LIST:
+            return {'items': None, 'status': success_status}
 
-            all_archive_log_items = []
+        # Get the configured group_id for the corresponding EVC archive log.
+        archive_log_group_ids = self.get_log_group_ids(self.mb_config_item[kind]['group_ids'])
 
-            # Iterate once if no/zero retention is specified.
-            for n_iter in range(0 if retention == 0 else 1, retention + 1):
-                if retention > 0:
-                    for group_id_index in enumerate(archive_log_group_ids):
-                        archive_log_group_ids[group_id_index[0]]['gap'] = n_iter * \
-                            archive_log_group_ids[group_id_index[0]]['count']
+        all_archive_log_items = []
 
-                # MODBUS poll the EVC device.
-                archive_log_items = self.get_evc_log(archive_log_group_ids, slave_id)['items']
+        # Iterate once if no/zero retention is specified.
+        for n_iter in range(0 if retention == 0 else 1, retention + 1):
+            if retention > 0:
+                for group_id_index in enumerate(archive_log_group_ids):
+                    archive_log_group_ids[group_id_index[0]]['gap'] = n_iter * \
+                        archive_log_group_ids[group_id_index[0]]['count']
 
-                # Send the received MODBUS responses to STDOUT for debugging purposes only.
-                if self.mb_config_item[kind]['debug'] is True:
-                    print_log(archive_log_items)
+            # MODBUS poll the EVC device.
+            archive_log_items = self.get_evc_log(archive_log_group_ids, slave_id)['items']
 
-                if retention > 0:
-                    for group_id_index in enumerate(archive_log_group_ids):
-                        del archive_log_group_ids[group_id_index[0]]['gap']
+            # Send the received MODBUS responses to STDOUT for debugging purposes only.
+            if self.mb_config_item[kind]['debug'] is True:
+                print_log(archive_log_items)
 
-                try:
-                    # Insert the received MODBUS responses (EVC archive log items value) into the
-                    # database; otherwise, throw an error.
-                    q_insert_archive = "INSERT IGNORE INTO " + self.db_tbl_prefix + '_' + kind + \
-                        " (deviceID, " + ', '.join(archive_log_items) + ") VALUES (" + \
-                            str(device_id) + ", %(" + ")s, %(".join(list(archive_log_items)) + ")s)"
-                    self.db_cur.execute(q_insert_archive, archive_log_items)
-                    if self.db_cur.rowcount > 0:
-                        all_archive_log_items.append(archive_log_items)
-                except (DBError, KeyError) as e:
-                    print_log(f"[{self.name}] send_archive_log(): {e} during {kind} operation "
-                              f"for device_id {device_id}.", 'error')
-                    if retention == 0:
-                        success_status = 2
-                else:
-                    if retention == 0:
-                        success_status = 1
+            if retention > 0:
+                for group_id_index in enumerate(archive_log_group_ids):
+                    del archive_log_group_ids[group_id_index[0]]['gap']
 
-            # Return the EVC archive log items value along with the general success status.
-            return {'items': all_archive_log_items, 'status': success_status}
-        return {'items': None, 'status': success_status}
+            try:
+                # Insert the received MODBUS responses (EVC archive log items value) into the
+                # database; otherwise, throw an error.
+                q_insert_archive = "INSERT IGNORE INTO " + self.db_tbl_prefix + '_' + kind + \
+                    " (deviceID, " + ', '.join(archive_log_items) + ") VALUES (" + \
+                        str(device_id) + ", %(" + ")s, %(".join(list(archive_log_items)) + ")s)"
+                self.db_cur.execute(q_insert_archive, archive_log_items)
+                if self.db_cur.rowcount > 0:
+                    all_archive_log_items.append(archive_log_items)
+            except (DBError, KeyError) as e:
+                print_log(f"[{self.name}] send_archive_log(): {e} during {kind} operation for "
+                            f"device_id {device_id}.", 'error')
+                if retention == 0:
+                    success_status = 2
+            else:
+                if retention == 0:
+                    success_status = 1
+
+        # Return the EVC archive log items value along with the general success status.
+        return {'items': all_archive_log_items, 'status': success_status}
 
     def device_reconnect(self, modbus_connected: bool) -> bool:
         """
@@ -335,6 +342,7 @@ class DeviceRead(threading.Thread):
         current_device_id = 0
         archive_log_failed = ARCHIVE_LOG_FAILED.copy()
         modbus_connected = False
+
         while not self.tparams['stop_me'].is_set():
             # Pause between MODBUS device connection attempts if it fails.
             scan_interval_ms = int(self.mb_config_item['current_log']['scan_interval_ms'])
@@ -412,10 +420,9 @@ class DeviceRead(threading.Thread):
                     if ((last_dtu_str.hour != current_dtu_str.hour or
                             archive_log_failed['hourly_log'] is True) and
                             ARCHIVE_LOG_ENABLED['hourly_log'] is True):
-                        if (self.send_archive_log(
-                            current_device_id,
-                            self.mb_config_item['hourly_log']['group_ids'],
-                            'hourly_log', current_slave_id)['status'] != 1):
+                        if (self.send_archive_log(current_device_id,
+                                                  'hourly_log',
+                                                  current_slave_id)['status'] != 1):
                             archive_log_failed['hourly_log'] = True
                         elif archive_log_failed['hourly_log'] is True:
                             archive_log_failed['hourly_log'] = False
@@ -424,19 +431,21 @@ class DeviceRead(threading.Thread):
                     # day_start_hour, only if day_start_hour > 0, for the relativity effect
                     # of the daily log and the monthly log.
                     if self.mb_config_item['daily_log']['day_start_hour'] > 0:
-                        last_dtu_str -= timedelta(hours=self.mb_config_item['daily_log']['day_start_hour'])
-                        current_dtu_str -= timedelta(hours=self.mb_config_item['daily_log']['day_start_hour'])
+                        last_dtu_str -= timedelta(
+                            hours=self.mb_config_item['daily_log']['day_start_hour'])
+                        current_dtu_str -= timedelta(
+                            hours=self.mb_config_item['daily_log']['day_start_hour'])
 
                     # Get daily log when EVC day has changed.
                     if (last_dtu_str.day != current_dtu_str.day or archive_log_failed['daily_log'] is True) and ARCHIVE_LOG_ENABLED['daily_log'] is True:
-                        if self.send_archive_log(current_device_id, self.mb_config_item['daily_log']['group_ids'], 'daily_log', current_slave_id)['status'] != 1:
+                        if self.send_archive_log(current_device_id, 'daily_log', current_slave_id)['status'] != 1:
                             archive_log_failed['daily_log'] = True
                         elif archive_log_failed['daily_log'] is True:
                             archive_log_failed['daily_log'] = False
 
                     # Get monthly log when EVC month has changed.
                     if (last_dtu_str.month != current_dtu_str.month or archive_log_failed['monthly_log'] is True) and ARCHIVE_LOG_ENABLED['monthly_log'] is True:
-                        if self.send_archive_log(current_device_id, self.mb_config_item['monthly_log']['group_ids'], 'monthly_log', current_slave_id)['status'] != 1:
+                        if self.send_archive_log(current_device_id, 'monthly_log', current_slave_id)['status'] != 1:
                             archive_log_failed['monthly_log'] = True
                         elif archive_log_failed['monthly_log'] is True:
                             archive_log_failed['monthly_log'] = False
@@ -459,7 +468,7 @@ class DeviceRead(threading.Thread):
                         rows_request_log = self.db_cur.fetchall()
                         for row_request_log in rows_request_log:
                             if row_request_log[2] <= self.mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['max_retention'] and ARCHIVE_LOG_ENABLED[ARCHIVE_LOG_LIST[row_request_log[1]]] is True:
-                                q_request_log_status = 1 if len(self.send_archive_log(current_device_id, self.mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['group_ids'], ARCHIVE_LOG_LIST[row_request_log[1]], current_slave_id, row_request_log[2])['items']) > 0 else 2
+                                q_request_log_status = 1 if len(self.send_archive_log(current_device_id, ARCHIVE_LOG_LIST[row_request_log[1]], current_slave_id, retention = row_request_log[2])['items']) > 0 else 2
                             else:
                                 q_request_log_status = 2
 

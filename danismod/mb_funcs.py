@@ -35,7 +35,6 @@ from pymodbus.client import ModbusTcpClient, ModbusSerialClient
 from pymodbus.client.mixin import ModbusClientMixin
 from pymodbus.constants import Endian
 
-
 from danismod.funcs import print_log
 
 def mb_connect(mb_type: str, port: str, host: str = None, mb_timeout: int = None):
@@ -63,23 +62,22 @@ def mb_connect(mb_type: str, port: str, host: str = None, mb_timeout: int = None
             print_log(f"[{thread_name}] Connected succesfully to {client}!")
         return client
 
-    if mb_type in ('rtuovertcp','tcp'):
+    if mb_type in ('rtuovertcp','tcp','asciiovertcp'):
         try:
             print_log(f"[{thread_name}] Connecting to {host} port {port}...")
             client = ModbusTcpClient(host=host,
                                      port=int(port),
-                                     framer=FramerType.RTU if mb_type in ('rtu', 'rtuovertcp')
+                                     framer=FramerType.RTU if mb_type == 'rtuovertcp'
                                      else FramerType.SOCKET if mb_type == 'tcp'
                                      else FramerType.ASCII, timeout=mb_timeout)
             return mb_connect_exec()
         except ModbusException as e:
             print_log(f"[{thread_name}] Unable to establish connection to {client}: {e}", 'error')
-    elif mb_type == 'rtu':
+    elif mb_type in ('rtu','ascii'):
         try:
             print_log(f"[{thread_name}] Connecting to port {port}...")
             client = ModbusSerialClient(port=port,
-                                        framer=FramerType.RTU if mb_type in ('rtu', 'rtuovertcp')
-                                        else FramerType.SOCKET if mb_type == 'tcp'
+                                        framer=FramerType.RTU if mb_type == 'rtu'
                                         else FramerType.ASCII, timeout=mb_timeout)
             return mb_connect_exec()
         except ModbusException as e:

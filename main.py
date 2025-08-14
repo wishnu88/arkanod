@@ -112,9 +112,9 @@ def register_group_paramcheck(param_name: str, grp_item_index: int, register_gro
             exists_count = 0
 
             # The loop checks whether this register_group member exists in the configured EVC logs.
-            for current_log_type in log_types:
-                if register_group_item[param_name] in mb_config_check_item[current_log_type]['group_ids']:
-                    exists_count = exists_count + 1
+            for log_type in log_types:
+                if register_group_item[param_name] in mb_config_check_item[log_type]['group_ids']:
+                    exists_count += 1
 
             # Throw an error if this register_group member does not exist in any of the configured
             # EVC logs.
@@ -360,7 +360,8 @@ def main():
 
             if 'wait_milliseconds' in mb_config_check_item:
                 if isinstance(mb_config_check_item['wait_milliseconds'], int):
-                    if mb_config_check_item['wait_milliseconds'] < 10 or mb_config_check_item['wait_milliseconds'] > 10000:
+                    if mb_config_check_item['wait_milliseconds'] < 10 or \
+                        mb_config_check_item['wait_milliseconds'] > 10000:
                         print_log(f"[{mb_config_files[item_index]}] Invalid Modbus polling wait "
                                   "interval (wait_milliseconds: ). Valid setting is between 10 and"
                                   " 10000 milliseconds.", 'error')
@@ -662,7 +663,7 @@ def main():
     for current_os_signal in [SIGINT, SIGHUP, SIGTERM]:
         os_signal(current_os_signal, signal_term_handler(threads=threads))
 
-    # MODBUS poll each EVC device ID
+    # MODBUS poll each EVC MODBUS Master
     for mb_config_item in mb_config_detail:
         thread = DeviceRead(mb_config_item, evctime_reg[mb_config_item['name']], db_params[0])
         thread.name = mb_config_item['name']
