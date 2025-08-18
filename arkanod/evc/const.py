@@ -74,12 +74,6 @@ ARCHIVE_LOG_LIST = [
     'monthly_log'
 ]
 
-ARCHIVE_LOG_ENABLED = {
-    'hourly_log': True,
-    'daily_log': True,
-    'monthly_log': True,
-}
-
 ARCHIVE_LOG_FAILED = {
     'hourly_log': False,
     'daily_log': False,
