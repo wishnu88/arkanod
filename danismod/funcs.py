@@ -91,7 +91,7 @@ def dt_utc_to_current(datetime_str: int, data_type: str = 'dt1'):
     Optional keyword argument:
     data_type: str; The EVC device date time format type (dt1, dt2). Default: dt1.
     """
-    data_type = 'dt1' if data_type == 'dt2' and datetime_str == 0 else data_type
+    data_type = 'dt1' if datetime_str == 0 else data_type
 
     # Basically, dt1 is a UNIX timestamp, while dt2 is taken from Corus Evo+ default date time
     # format.
