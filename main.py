@@ -44,8 +44,7 @@ from arkanod.evc.const import (MODBUS_TYPE_LIST,
                                REGISTER_TYPE_LIST,
                                SWAP_TYPE_LIST,
                                DATA_TYPE_LIST,
-                               ARCHIVE_LOG_LIST,
-                               ARCHIVE_LOG_ENABLED)
+                               ARCHIVE_LOG_LIST)
 from arkanod.evc.device_read import DeviceRead
 from arkanod.evc.db_tables_create import init_create_tables
 from danismod.yaml_include import Loader
@@ -58,10 +57,17 @@ Loader.add_constructor('!include', Loader.include)
 # Variable initialization for storing configured group_ids.
 group_id_list = {}
 
+# Variable initialization for storing configured archive log list.
+archive_log_list = ARCHIVE_LOG_LIST
+archive_log_enabled = {
+    'hourly_log': True,
+    'daily_log': True,
+    'monthly_log': True,
+}
+
 # Initialization of predefined constants and operation variables when --create-tables is called.
 if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
-    # from arkanod.evc.db_const import TRIGGER_REQ_DATALOG, EVENT_NOT_UPDATE_CHECK
-    register_conversion_fields = {archive_log: [] for archive_log in ARCHIVE_LOG_LIST}
+    register_conversion_fields = {}
 
 def signal_term_handler(threads: list):
     """
@@ -103,7 +109,7 @@ def register_group_paramcheck(param_name: str, grp_item_index: int, register_gro
     param_name: str; The register_group parameter name.
     grp_item_index: int; Index number from the list of register_group members.
     """
-    log_types = ARCHIVE_LOG_LIST[:]
+    log_types = archive_log_list[:]
     log_types.append('current_log')
     error_len = 0
 
@@ -413,8 +419,9 @@ def main():
                         error_len += 1
                 else:
                     print_log(f"[{mb_config_files[item_index]} - current_log] Unable to find "
-                              "evc_time_regname configuration (evc_time_regname: ).", 'error')
-                    error_len += 1
+                              "evc_time_regname configuration (evc_time_regname: ). Defaulting to "
+                              "server time.", 'info')
+                    
 
                 # END - Sanity check for current_log --> evc_time_regname configuration.
 
@@ -460,7 +467,7 @@ def main():
             # END - Sanity check for current_log configuration.
 
             # START - Sanity check for hourly_log, daily_log, monthly_log configuration.
-            for current_archive_log in ARCHIVE_LOG_LIST:
+            for current_archive_log in archive_log_list:
                 if current_archive_log in mb_config_check_item:
 
                     # START - Sanity check for hourly_log, daily_log, monthly_log -->
@@ -524,7 +531,15 @@ def main():
                 else:
                     print_log(f"[{mb_config_files[item_index]}] Unable to find "
                               f"{current_archive_log} configuration. Disabling it.")
-                    ARCHIVE_LOG_ENABLED[current_archive_log] = False
+                    archive_log_enabled[current_archive_log] = False
+
+            for current_archive_log, log_enabled in archive_log_enabled.items():
+                if log_enabled is False:
+                    archive_log_list.remove(current_archive_log)
+                else:
+                    # Create list for archive log if --create-tables is called.
+                    if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
+                        register_conversion_fields.update({current_archive_log: []})
 
             # END - Sanity check for hourly_log, daily_log, monthly_log configuration.
 
@@ -583,7 +598,7 @@ def main():
                                 mb_config_detail=mb_config_detail,
                                 item_index=item_index)
 
-                        if error_len == 0 and register_conversion_item['name'] == mb_config_check_item['current_log']['evc_time_regname']:
+                        if error_len == 0 and 'evc_time_regname' in mb_config_check_item['current_log'] and register_conversion_item['name'] == mb_config_check_item['current_log']['evc_time_regname']:
                             evctime_reg[mb_config_check_item['name']] = {
                                 'name': register_conversion_item['name'],
                                 'data_type': register_conversion_item['data_type']
@@ -599,15 +614,18 @@ def main():
                                     register_conversion_fields['current_log'].append({
                                         'item': register_conversion_item['name'],
                                         'data_type': register_conversion_item['data_type']})
-                                elif group_id in group_id_list['hourly_log']:
+                                elif archive_log_enabled['hourly_log'] is True and \
+                                    group_id in group_id_list['hourly_log']:
                                     register_conversion_fields['hourly_log'].append({
                                         'item': register_conversion_item['name'],
                                         'data_type': register_conversion_item['data_type']})
-                                elif group_id in group_id_list['daily_log']:
+                                elif archive_log_enabled['daily_log'] is True and \
+                                    group_id in group_id_list['daily_log']:
                                     register_conversion_fields['daily_log'].append({
                                         'item': register_conversion_item['name'],
                                         'data_type': register_conversion_item['data_type']})
-                                elif group_id in group_id_list['monthly_log']:
+                                elif archive_log_enabled['monthly_log'] is True and \
+                                    group_id in group_id_list['monthly_log']:
                                     register_conversion_fields['monthly_log'].append({
                                         'item': register_conversion_item['name'],
                                         'data_type': register_conversion_item['data_type']})
@@ -665,7 +683,14 @@ def main():
 
     # MODBUS poll each EVC MODBUS Master
     for mb_config_item in mb_config_detail:
-        thread = DeviceRead(mb_config_item, evctime_reg[mb_config_item['name']], db_params[0])
+        if 'name' not in evctime_reg:
+            evctime_reg[mb_config_item['name']] = {
+                'name': 'dbserver',
+                'data_type': 'dbserver'
+            }
+
+        thread = DeviceRead(mb_config_item, evctime_reg[mb_config_item['name']], db_params[0],
+                            archive_log_enabled)
         thread.name = mb_config_item['name']
         threads.append(thread)
         thread.start()
