@@ -33,7 +33,6 @@ import threading
 from pymodbus import FramerType, ModbusException
 from pymodbus.client import ModbusTcpClient, ModbusSerialClient
 from pymodbus.client.mixin import ModbusClientMixin
-from pymodbus.constants import Endian
 
 from danismod.funcs import print_log
 
@@ -124,8 +123,8 @@ def mb_convert_registers(registers: list, data_type: str, swap_type: str = "none
 
     return ModbusClientMixin.convert_from_registers(registers,
                                                     data_type=data_type_class,
-                                                    word_order=Endian.LITTLE if swap_type == 'word'
-                                                    else Endian.BIG) if decoded is None else decoded
+                                                    word_order="<" if swap_type == 'word'
+                                                    else ">") if decoded is None else decoded
 
 def mb_close(client: object):
     """
