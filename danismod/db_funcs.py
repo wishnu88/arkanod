@@ -187,7 +187,7 @@ def db_config_check() -> dict | bool:
 
         if error_len == 0:
             # Check whether the 2 triggers have already been created.
-            q_check_trigger = "SHOW TRIGGERS LIKE '" + db_config['tbl_prefix'] + "_%'"
+            q_check_trigger = "SHOW TRIGGERS LIKE '" + db_config['tbl_prefix'] + "\\_%'"
             db_cur.execute(q_check_trigger)
             if db_cur.rowcount != 2:
                 print_log(f"Missing triggers in database {db_config['db_name']}.", 'error')
