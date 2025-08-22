@@ -105,85 +105,114 @@ def db_close(db_conn: object):
         db_conn.close()
         del db_conn
 
+def db_config_check_detail(db_vars: list, error_len: int = 0) -> int:
+    """
+    A function to check detailed database configurations and return the error occurred if any.
+
+    Mandatory keyword argument:
+    db_vars: list; The database configuration instance list.
+
+    Optional keyword argument:
+    error_len: int; Specify the current state of the error occurred. Default: 0.
+    """
+    for db_item_index, db_instance in enumerate(db_vars):
+        for db_param_name in ['db_instance','db_host','db_username','db_password','db_name']:
+            if db_param_name not in db_instance:
+                error_len += 1
+                if db_param_name == 'db_instance':
+                    print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find the "
+                                f"valid {db_param_name} configuration.", 'error')
+                    break
+                print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find "
+                            f"{db_param_name} configuration for instance "
+                            f"{db_instance['db_instance']}.", 'error')
+            elif db_param_name in db_instance and db_instance[db_param_name] == "":
+                if db_param_name == 'db_instance':
+                    print_log(f"[config/db.yaml - Item {db_item_index}] db_instance "
+                                "configuration cannot be empty.", 'error')
+                else:
+                    print_log(f"[config/db.yaml - Item {db_item_index}] Invalid {db_param_name}"
+                                f" configuration for instance {db_instance['db_instance']}.",
+                                'error')
+                error_len += 1
+
+        if 'db_port' in db_instance:
+            if ((isinstance(db_instance['db_port'], int) and
+                (db_instance['db_port'] < 1 or
+                db_instance['db_port'] > 65535)) or
+                isinstance(db_instance['db_port'], int) is False):
+                print_log(f"[config/db.yaml - Item {db_item_index}] Invalid db_port "
+                            "configuration.", 'error')
+                error_len += 1
+
+    return error_len
+
+def db_config_file(error_len: int = 0) -> dict | bool:
+    """
+    A function to read <base_dir>/config/db.yaml file for database configuration. Will be supporting
+    multiple databases and DBMS in the future.
+
+    Optional keyword argument:
+    error_len: int; Specify the current state of the error occurred. Default: 0.
+    """
+    try:
+        with open('config/db.yaml', 'r', encoding='utf-8') as db_config:
+            print_log('Loading database settings from config/db.yaml...')
+            db_config_check_var = yaml.safe_load(db_config)
+    except OSError as e:
+        print_log(f"Unable to open config/db.yaml file: {e}")
+        error_len = 1
+
+    if error_len == 0 and len(db_config_check_var) <= 0:
+        print_log("[config/db.yaml] No database configuration in this file.", 'error')
+        error_len = 1
+
+    return db_config_check_var if error_len == 0 else False
+
 def db_config_check() -> dict | bool:
     """
     A procedure to perform a complete database existence check before going to the main program.
     It will return a boolean False if the check fails; otherwise, it will return the dictionary of
     the database connection and its cursor. 
     """
-    error_len = 0
-
-    # Read <base_dir>/config/db.yaml file for database configuration. Will be supporting multiple
-    # databases and DBMS in the future.
-    try:
-        with open('config/db.yaml', 'r', encoding='utf-8') as db_config:
-            print_log('Loading database settings from config/db.yaml...')
-            db_config_check_var = db_config_detail = yaml.safe_load(db_config)
-    except OSError as e:
-        print_log(f"Unable to open config/db.yaml file: {e}")
-        return False
+    db_config_detail = db_config_file()
 
     # START - DB config sanity check and default value.
-    if len(db_config_check_var) > 0:
-        for db_item_index, db_instance in enumerate(db_config_check_var):
-            for db_param_name in ['db_instance','db_host','db_username','db_password','db_name']:
-                if db_param_name not in db_instance:
-                    error_len += 1
-                    if db_param_name == 'db_instance':
-                        print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find the "
-                                  f"valid {db_param_name} configuration.", 'error')
-                        break
-                    print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find "
-                              f"{db_param_name} configuration for instance "
-                              f"{db_instance['db_instance']}.", 'error')
-                elif db_param_name in db_instance and db_instance[db_param_name] == "":
-                    if db_param_name == 'db_instance':
-                        print_log(f"[config/db.yaml - Item {db_item_index}] db_instance "
-                                  "configuration cannot be empty.", 'error')
-                    else:
-                        print_log(f"[config/db.yaml - Item {db_item_index}] Invalid {db_param_name}"
-                                  f" configuration for instance {db_instance['db_instance']}.",
-                                  'error')
-                    error_len += 1
-
-            if 'db_port' not in db_instance:
-                print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find db_port "
-                          "configuration. Assuming TCP/3306 as the DB port.", 'debug')
-                db_config_detail[db_item_index]['db_port'] = 3306
-            elif 'db_port' in db_instance:
-                if ((isinstance(db_instance['db_port'], int) and
-                    (db_instance['db_port'] < 1 or
-                    db_instance['db_port'] > 65535)) or
-                    isinstance(db_instance['db_port'], int) is False):
-                    print_log(f"[config/db.yaml - Item {db_item_index}] Invalid db_port "
-                              "configuration.", 'error')
-                    error_len += 1
+    error_len = db_config_check_detail(db_config_detail) if db_config_detail is not False else 1
 
     if error_len > 0:
         return False
 
     if len(sys.argv) == 2 and sys.argv[1] == '--create-tables':
-        pass
-    else:
-        for db_config in db_config_detail:
-            db_conn_params = {
-                'host': db_config['db_host'],
-                'port': db_config['db_port'],
-                'user': db_config['db_username'],
-                'password': db_config['db_password'],
-                'database': db_config['db_name'],
-                'autocommit': True,
-                # 'reconnect': True
-            }
-            [db_conn, db_cur] = db_open(db_conn_params)
-            if db_cur is None:
-                return False
-            for the_table in [*OPER_TABLES, *ARCHIVE_LOG_LIST]:
-                table_name = db_config['tbl_prefix'] + '_' + the_table
-                if not check_table_exists(table_name, db_config['db_name'], db_cur):
-                    print_log(f"Table {table_name} is not exists in database "
-                              f"{db_config['db_name']}.", 'error')
-                    error_len += 1
+        print_log('Database configuration loaded and checked successfully. Creating tables...')
+        return db_config_detail
+
+    for db_item_index, db_config in enumerate(db_config_detail):
+        if 'db_port' not in db_config:
+            print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find db_port "
+                        "configuration. Assuming TCP/3306 as the DB port.", 'debug')
+            db_config_detail[db_item_index]['db_port'] = 3306
+        db_conn_params = {
+            'host': db_config['db_host'],
+            'port': db_config['db_port'],
+            'user': db_config['db_username'],
+            'password': db_config['db_password'],
+            'database': db_config['db_name'],
+            'autocommit': True,
+            # 'reconnect': True
+        }
+        [db_conn, db_cur] = db_open(db_conn_params)
+        if db_cur is None:
+            thread_name = threading.current_thread().name
+            print_log(f"[{thread_name}] ERROR creating the database cursor.", 'critical')
+            return False
+
+        for the_table in [*OPER_TABLES, *ARCHIVE_LOG_LIST]:
+            table_name = db_config['tbl_prefix'] + '_' + the_table
+            if not check_table_exists(table_name, db_config['db_name'], db_cur):
+                print_log(f"Table {table_name} is not exists in database "
+                            f"{db_config['db_name']}.", 'error')
+                error_len += 1
 
         if error_len == 0:
             # Check whether the 2 triggers have already been created.
@@ -200,11 +229,11 @@ def db_config_check() -> dict | bool:
                 print_log(f"Missing event in database {db_config['db_name']}.", 'error')
                 error_len += 1
 
-        if error_len > 0:
-            print_log("Run arkanod with the '--create-tables' option to solve the issue(s).",
-                      'error')
-            db_close(db_conn)
-            return False
+    if error_len > 0:
+        print_log("Run arkanod with the '--create-tables' option to solve the issue(s).",
+                    'error')
+        db_close(db_conn)
+        return False
 
     print_log('Database configuration loaded and checked successfully.')
     return db_config_detail
