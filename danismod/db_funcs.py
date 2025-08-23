@@ -183,15 +183,16 @@ def db_config_check() -> dict | bool:
     if error_len > 0:
         return False
 
-    if len(sys.argv) == 2 and sys.argv[1] == '--create-tables':
-        print_log('Database configuration loaded and checked successfully. Creating tables...')
-        return db_config_detail
-
     for db_item_index, db_config in enumerate(db_config_detail):
         if 'db_port' not in db_config:
             print_log(f"[config/db.yaml - Item {db_item_index}] Unable to find db_port "
                         "configuration. Assuming TCP/3306 as the DB port.", 'debug')
             db_config_detail[db_item_index]['db_port'] = 3306
+
+        if len(sys.argv) == 2 and sys.argv[1] == '--create-tables':
+            print_log('Database configuration loaded and checked successfully. Creating tables...')
+            return db_config_detail
+
         db_conn_params = {
             'host': db_config['db_host'],
             'port': db_config['db_port'],
