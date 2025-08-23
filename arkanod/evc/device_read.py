@@ -137,8 +137,7 @@ class DeviceRead(threading.Thread):
             except (ModbusException, StructError, OSError) as e:
                 # Throw an error when the EVC didn't response to MODBUS poll.
                 print_log(f"[{self.name}] Unable to poll Modbus device register address "
-                          f"{register_group['address']} to {(register_group['address'] + \
-                                                             register_group['count'])} on "
+                          f"{register_group['address']} count {register_group['count']} on "
                           f"{self.tparams['mb_client']} with slave ID {register_group['slave']}: "
                           f"{e}. Moving on...", 'error')
                 continue
@@ -147,8 +146,7 @@ class DeviceRead(threading.Thread):
             # responds to the MODBUS poll.
             if not hasattr(result, 'registers') or result.isError():
                 print_log(f"[{self.name}] Broken response from Modbus device register address "
-                          f"{register_group['address']} to {(register_group['address'] + \
-                                                             register_group['count'])} on "
+                          f"{register_group['address']} count {register_group['count']} on "
                           f"{self.tparams['mb_client']} with slave ID {register_group['slave']}: "
                           f"{e}. Moving on...", 'error')
                 sleep(self.mb_config_item['timeout_seconds'])
@@ -460,9 +458,8 @@ class DeviceRead(threading.Thread):
                     self.tparams['archive_log_enabled']['hourly_log'] is True
                 ]
                 if (dtu_conditions[0] or dtu_conditions[1]) and dtu_conditions[2]:
-                    if (self.send_archive_log(current_device_id,
-                                                'hourly_log',
-                                                current_slave_id)['status'] != 1):
+                    if (self.send_archive_log(current_device_id, 'hourly_log',
+                                              current_slave_id)['status'] != 1):
                         archive_log_failed['hourly_log'] = True
                     elif archive_log_failed['hourly_log'] is True:
                         archive_log_failed['hourly_log'] = False
@@ -484,7 +481,8 @@ class DeviceRead(threading.Thread):
                     self.tparams['archive_log_enabled']['daily_log'] is True
                 ]
                 if (dtu_conditions[0] or dtu_conditions[1]) and dtu_conditions[2]:
-                    if self.send_archive_log(current_device_id, 'daily_log', current_slave_id)['status'] != 1:
+                    if self.send_archive_log(current_device_id, 'daily_log',
+                                             current_slave_id)['status'] != 1:
                         archive_log_failed['daily_log'] = True
                     elif archive_log_failed['daily_log'] is True:
                         archive_log_failed['daily_log'] = False
@@ -496,7 +494,8 @@ class DeviceRead(threading.Thread):
                     self.tparams['archive_log_enabled']['monthly_log'] is True
                 ]
                 if (dtu_conditions[0] or dtu_conditions[1]) and dtu_conditions[2]:
-                    if self.send_archive_log(current_device_id, 'monthly_log', current_slave_id)['status'] != 1:
+                    if self.send_archive_log(current_device_id, 'monthly_log',
+                                             current_slave_id)['status'] != 1:
                         archive_log_failed['monthly_log'] = True
                     elif archive_log_failed['monthly_log'] is True:
                         archive_log_failed['monthly_log'] = False
@@ -525,11 +524,10 @@ class DeviceRead(threading.Thread):
                         else:
                             q_request_log_status = 2
 
-                        q_update_request_log = "UPDATE " + self.db_tbl_prefix + \
-                            "_request_log SET requestStatus = %s WHERE id = %s"
-                        self.db_cur.execute(q_update_request_log,
-                                            (q_request_log_status,
-                                                row_request_log[0]))
+                        q_update_request_log = "UPDATE " + self.db_tbl_prefix + "_request_log " \
+                            "SET requestStatus = %s WHERE id = %s"
+                        self.db_cur.execute(q_update_request_log, (q_request_log_status,
+                        row_request_log[0]))
                 # END - Check Request Log.
 
                 # Time mark for the last EVC current log MODBUS poll.

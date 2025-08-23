@@ -183,13 +183,15 @@ def register_conversion_paramcheck(param_name: str,
                     error_len += 1
 
         elif param_name == 'registers':
+            curr_register = register_conversion_item['registers']
+
             if isinstance(register_conversion_item['registers'], list) is False:
                 print_log(f"[Item {item_index} - register_conversion - Group Item "
                           f"{conversion_item_index}] Invalid `registers` configuration for "
                           f"conversion name: {register_conversion_item['name']}. It should be a "
                           "list [start_reg_addr, end_reg_addr].", 'error')
                 error_len += 1
-            elif register_conversion_item['registers'][0] > register_conversion_item['registers'][1]:
+            elif curr_register[0] > curr_register[1]:
                 print_log(f"[Item {item_index} - register_conversion - Group Item "
                           f"{conversion_item_index}] Invalid `registers` configuration for "
                           f"conversion name: {register_conversion_item['name']}. The "
@@ -205,7 +207,11 @@ def register_conversion_paramcheck(param_name: str,
                                     current_register_group['count'] - 1
                             }
 
-                            if not regnum['start'] <= register_conversion_item['registers'][0] <= regnum['end'] or not regnum['start'] <= register_conversion_item['registers'][1] <= regnum['end']:
+                            regnum_conds = [
+                                not regnum['start'] <= curr_register[0] <= regnum['end'],
+                                not regnum['start'] <= curr_register[1] <= regnum['end']
+                            ]
+                            if regnum_conds[0] or regnum_conds[1]:
                                 print_log(f"[Item {item_index} - register_conversion - Group Item "
                                           f"{conversion_item_index}] Invalid `registers` "
                                           "configuration for conversion name: "
@@ -214,6 +220,8 @@ def register_conversion_paramcheck(param_name: str,
                                           f"{curr_group_id} (should be between "
                                           f"{regnum['start']} - {regnum['end']}).", 'error')
                                 error_len += 1
+
+                            del regnum_conds
         elif param_name == 'data_type' and \
             register_conversion_item['data_type'] not in DATA_TYPE_LIST:
             print_log(f"[Item {item_index} - register_conversion - Group Item "
@@ -547,7 +555,7 @@ def main():
 
             if 'register_group' in mb_config_check_item:
                 if isinstance(mb_config_check_item['register_group'], list) is True:
-                    for grp_item_index, register_group_item in enumerate(mb_config_check_item['register_group']):
+                    for grp_index, group_item in enumerate(mb_config_check_item['register_group']):
                         # START - Sanity check for group_id, slave, address, count, type c
                         # onfiguration.
                         for param_name in ['group_id',
@@ -557,8 +565,8 @@ def main():
                                                 'type']:
                             error_len += register_group_paramcheck(
                                 param_name = param_name,
-                                grp_item_index = grp_item_index,
-                                register_group_item=register_group_item,
+                                grp_item_index = grp_index,
+                                register_group_item=group_item,
                                 mb_config_check_item=mb_config_check_item,
                                 item_index=item_index)
                         # END - Sanity check for group_id, slave, address, count, type
@@ -580,7 +588,7 @@ def main():
             if 'register_conversion' in mb_config_check_item:
 
                 if isinstance(mb_config_check_item['register_conversion'], list) is True:
-                    for grp_item_index, register_conversion_item in enumerate(mb_config_check_item['register_conversion']):
+                    for check_index, item in enumerate(mb_config_check_item['register_conversion']):
                         # START - Sanity check for name, group_ids, registers, data_type, swap,
                         # precision configuration.
 
@@ -592,16 +600,16 @@ def main():
                                             'precision']:
                             error_len += register_conversion_paramcheck(
                                 param_name=param_name,
-                                conversion_item_index=grp_item_index,
+                                conversion_item_index=check_index,
                                 mb_config_check_item=mb_config_check_item,
-                                register_conversion_item=register_conversion_item,
+                                register_conversion_item=item,
                                 mb_config_detail=mb_config_detail,
                                 item_index=item_index)
 
-                        if error_len == 0 and 'evc_time_regname' in mb_config_check_item['current_log'] and register_conversion_item['name'] == mb_config_check_item['current_log']['evc_time_regname']:
+                        if error_len == 0 and 'evc_time_regname' in mb_config_check_item['current_log'] and item['name'] == mb_config_check_item['current_log']['evc_time_regname']:
                             evctime_reg[mb_config_check_item['name']] = {
-                                'name': register_conversion_item['name'],
-                                'data_type': register_conversion_item['data_type']
+                                'name': item['name'],
+                                'data_type': item['data_type']
                             }
 
                         # END - Sanity check for name, group_ids, registers, data_type, swap,
@@ -609,26 +617,26 @@ def main():
 
                         # List items for current_log and archive log table creation.
                         if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
-                            for group_id in register_conversion_item['group_ids']:
+                            for group_id in item['group_ids']:
                                 if group_id in group_id_list['current_log']:
                                     register_conversion_fields['current_log'].append({
-                                        'item': register_conversion_item['name'],
-                                        'data_type': register_conversion_item['data_type']})
+                                        'item': item['name'],
+                                        'data_type': item['data_type']})
                                 elif archive_log_enabled['hourly_log'] is True and \
                                     group_id in group_id_list['hourly_log']:
                                     register_conversion_fields['hourly_log'].append({
-                                        'item': register_conversion_item['name'],
-                                        'data_type': register_conversion_item['data_type']})
+                                        'item': item['name'],
+                                        'data_type': item['data_type']})
                                 elif archive_log_enabled['daily_log'] is True and \
                                     group_id in group_id_list['daily_log']:
                                     register_conversion_fields['daily_log'].append({
-                                        'item': register_conversion_item['name'],
-                                        'data_type': register_conversion_item['data_type']})
+                                        'item': item['name'],
+                                        'data_type': item['data_type']})
                                 elif archive_log_enabled['monthly_log'] is True and \
                                     group_id in group_id_list['monthly_log']:
                                     register_conversion_fields['monthly_log'].append({
-                                        'item': register_conversion_item['name'],
-                                        'data_type': register_conversion_item['data_type']})
+                                        'item': item['name'],
+                                        'data_type': item['data_type']})
                 else:
                     print_log(f"[{mb_config_files[item_index]}] Invalid register_conversion "
                               "configuration (register_conversion: ). It should be a list.",
