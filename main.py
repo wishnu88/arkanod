@@ -201,7 +201,8 @@ def register_conversion_paramcheck(param_name: str,
                         if curr_group_id == current_register_group['group_id']:
                             regnum = {
                                 'start': current_register_group['address'],
-                                'end': current_register_group['address'] + current_register_group['count'] - 1
+                                'end': current_register_group['address'] + \
+                                    current_register_group['count'] - 1
                             }
 
                             if not regnum['start'] <= register_conversion_item['registers'][0] <= regnum['end'] or not regnum['start'] <= register_conversion_item['registers'][1] <= regnum['end']:
@@ -213,7 +214,8 @@ def register_conversion_paramcheck(param_name: str,
                                           f"{curr_group_id} (should be between "
                                           f"{regnum['start']} - {regnum['end']}).", 'error')
                                 error_len += 1
-        elif param_name == 'data_type' and register_conversion_item['data_type'] not in DATA_TYPE_LIST:
+        elif param_name == 'data_type' and \
+            register_conversion_item['data_type'] not in DATA_TYPE_LIST:
             print_log(f"[Item {item_index} - register_conversion - Group Item "
                       f"{conversion_item_index}] Invalid `data_type` configuration for conversion "
                       f"name: {register_conversion_item['name']}. Valid options are: "
@@ -411,9 +413,8 @@ def main():
                 # END - Sanity check for current_log --> scan_interval_ms configuration.
 
                 # START - Sanity check for current_log --> evc_time_regname configuration.
-
                 if 'evc_time_regname' in mb_config_check_item['current_log']:
-                    if isinstance(mb_config_check_item['current_log']['evc_time_regname'], str) is False:
+                    if not isinstance(mb_config_check_item['current_log']['evc_time_regname'], str):
                         print_log(f"[{mb_config_files[item_index]} - current_log] Invalid "
                                   "evc_time_regname configuration (evc_time_regname: ).", 'error')
                         error_len += 1
@@ -421,7 +422,6 @@ def main():
                     print_log(f"[{mb_config_files[item_index]} - current_log] Unable to find "
                               "evc_time_regname configuration (evc_time_regname: ). Defaulting to "
                               "server time.", 'info')
-                    
 
                 # END - Sanity check for current_log --> evc_time_regname configuration.
 
@@ -495,7 +495,7 @@ def main():
                     # configuration.
 
                     if 'debug' in mb_config_check_item[current_archive_log]:
-                        if isinstance(mb_config_check_item[current_archive_log]['debug'], bool) is False:
+                        if not isinstance(mb_config_check_item[current_archive_log]['debug'], bool):
                             print_log(f"[{mb_config_files[item_index]} - {current_archive_log}] "
                                       "Invalid debug configuration (debug: ). The valid value are "
                                       "boolean: true or false.", 'error')
@@ -512,7 +512,7 @@ def main():
                     # configuration.
 
                     if 'group_ids' in mb_config_check_item[current_archive_log]:
-                        if isinstance(mb_config_check_item[current_archive_log]['group_ids'], list) is False:
+                        if not isinstance(mb_config_check_item[current_archive_log]['group_ids'], list):
                             print_log(f"[{mb_config_files[item_index]} - {current_archive_log}] "
                                       "Invalid group_ids configuration (group_ids: ). It should be "
                                       "a list.", 'error')
@@ -534,11 +534,11 @@ def main():
                     archive_log_enabled[current_archive_log] = False
 
             for current_archive_log, log_enabled in archive_log_enabled.items():
-                if log_enabled is False:
+                if log_enabled is False and current_archive_log in archive_log_list:
                     archive_log_list.remove(current_archive_log)
                 else:
                     # Create list for archive log if --create-tables is called.
-                    if len(sys.argv) > 1 and sys.argv[1] == '--create-tables':
+                    if len(sys.argv) > 1 and sys.argv[1] == '--create-tables' and log_enabled:
                         register_conversion_fields.update({current_archive_log: []})
 
             # END - Sanity check for hourly_log, daily_log, monthly_log configuration.

@@ -33,6 +33,27 @@ from danismod.db_funcs import db_open, db_close, check_table_exists, create_tabl
 from danismod.funcs import print_log, app_exit
 from .db_const import DATA_TYPE, OPER_TABLES, TRIGGER_REQ_DATALOG, EVENT_NOT_UPDATE_CHECK
 
+
+def create_trigger_update_check(table_name: str, db_conn_details: dict, db_cur: object):
+    """
+    A function to create a trigger for the update_check table when it is updated.
+    """
+    q_trigger_req_datalog = TRIGGER_REQ_DATALOG % (db_conn_details['tbl_prefix'],
+                                                    table_name, db_conn_details['tbl_prefix'],
+                                                    db_conn_details['tbl_prefix'],
+                                                    db_conn_details['tbl_prefix'])
+    db_cur.execute(q_trigger_req_datalog)
+
+def create_trigger_current_log(table_name: str, db_conn_details: dict, db_cur: object):
+    """
+    A function to create a trigger for the current_log table when it is updated.
+    """
+    db_cur.execute('CREATE TRIGGER IF NOT EXISTS `' + db_conn_details['tbl_prefix'] + \
+                    '_UPDATE_CHECK` AFTER UPDATE ON `' + table_name + '` FOR EACH ROW UPDATE ' \
+                    + db_conn_details['tbl_prefix'] + '_update_check ' \
+                    'SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND ' \
+                    'Date_End IS NULL')
+
 def init_create_tables(db_conn_details: dict, register_conversion_fields: dict,
                        mb_config_check_item: dict):
     """
@@ -57,7 +78,7 @@ def init_create_tables(db_conn_details: dict, register_conversion_fields: dict,
 
     [db_conn, db_cur] = db_open(db_conn_params)
 
-    def rollback_table(table_name: str, table_errors: int = table_errors):
+    def rollback_table(table_name: str):
         """ 
         A simple procedure to drop the already created table. It requires only one keyword
         argument: table_name; str.
@@ -67,22 +88,6 @@ def init_create_tables(db_conn_details: dict, register_conversion_fields: dict,
             print_log(f"Rolling back create table {table_name}.", 'error')
             table_errors += 1
 
-    def create_trigger_update_check():
-        # Create a trigger for the update_check table when it is updated.
-        q_trigger_req_datalog = TRIGGER_REQ_DATALOG % (db_conn_details['tbl_prefix'],
-                                                       table_name, db_conn_details['tbl_prefix'],
-                                                       db_conn_details['tbl_prefix'],
-                                                       db_conn_details['tbl_prefix'])
-        db_cur.execute(q_trigger_req_datalog)
-
-    def create_trigger_current_log():
-        # Create a trigger for the current_log table when it is updated.
-        db_cur.execute('CREATE TRIGGER IF NOT EXISTS `' + db_conn_details['tbl_prefix'] + \
-                       '_UPDATE_CHECK` AFTER UPDATE ON `' + table_name + '` FOR EACH ROW UPDATE ' \
-                        + db_conn_details['tbl_prefix'] + '_update_check ' \
-                        'SET Date_End = NEW.LastUpdated WHERE deviceID = NEW.deviceID AND ' \
-                        'Date_End IS NULL')
-
     # Iterate through the available tables needed for runtime operation.
     for oper_table_name, oper_table_fields in OPER_TABLES.items():
         index_failed = 0
@@ -91,7 +96,7 @@ def init_create_tables(db_conn_details: dict, register_conversion_fields: dict,
         if check_table_exists(table_name, db_conn_details['db_name'], db_cur):
             print_log(f"Table {table_name} is already exists, skipping.")
             if oper_table_name == 'update_check':
-                create_trigger_update_check()
+                create_trigger_update_check(table_name, db_conn_details, db_cur)
             continue
 
         # Create an operation table.
@@ -113,7 +118,7 @@ def init_create_tables(db_conn_details: dict, register_conversion_fields: dict,
                 index_failed += 1
             else:
                 try:
-                    create_trigger_update_check()
+                    create_trigger_update_check(table_name, db_conn_details, db_cur)
                 # Throw an error if the database table trigger creation fails.
                 except DBError as e:
                     print_log(f"Failed to create trigger for table {table_name}: {e}", 'error')
@@ -165,7 +170,7 @@ def init_create_tables(db_conn_details: dict, register_conversion_fields: dict,
             # Instead of creating an index, we create a trigger for the current_log table when it
             # is updated.
             try:
-                create_trigger_current_log()
+                create_trigger_current_log(table_name, db_conn_details, db_cur)
             # Throw an error if the trigger creation fails.
             except DBError as e:
                 print_log(f"Failed to create trigger for table {table_name}: {e}", 'error')
