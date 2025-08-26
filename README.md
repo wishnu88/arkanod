@@ -30,7 +30,7 @@ Tested in macOS Sequoia 15.5 and Debian GNU/Linux 12 (should be no issue in any 
 A more detailed explanation about how to use this software can be obtained by sending me an email.
 
 ## Prerequisites
-- Python 3.9+
+- Python 3.11+
 - Python mysqlclient library
 - Follow the steps in https://pypi.org/project/mysqlclient/ to install the Python mysqlclient library first (omit the "pip install..")
 

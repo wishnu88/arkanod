@@ -482,7 +482,8 @@ def main():
                     # max_retention configuration.
 
                     if 'max_retention' in mb_config_check_item[current_archive_log]:
-                        if isinstance(mb_config_check_item[current_archive_log]['max_retention'], int):
+                        if isinstance(mb_config_check_item[current_archive_log]['max_retention'],
+                                      int):
                             if mb_config_check_item[current_archive_log]['max_retention'] < 1:
                                 print_log(f"[{mb_config_files[item_index]} - {current_archive_log}]"
                                           " The minimum value of max_retention is 1. Disabling it.",
@@ -520,7 +521,8 @@ def main():
                     # configuration.
 
                     if 'group_ids' in mb_config_check_item[current_archive_log]:
-                        if not isinstance(mb_config_check_item[current_archive_log]['group_ids'], list):
+                        if not isinstance(mb_config_check_item[current_archive_log]['group_ids'],
+                                          list):
                             print_log(f"[{mb_config_files[item_index]} - {current_archive_log}] "
                                       "Invalid group_ids configuration (group_ids: ). It should be "
                                       "a list.", 'error')
@@ -606,7 +608,10 @@ def main():
                                 mb_config_detail=mb_config_detail,
                                 item_index=item_index)
 
-                        if error_len == 0 and 'evc_time_regname' in mb_config_check_item['current_log'] and item['name'] == mb_config_check_item['current_log']['evc_time_regname']:
+                        c1: bool = error_len == 0 and \
+                            'evc_time_regname' in mb_config_check_item['current_log'] and \
+                            item['name'] == mb_config_check_item['current_log']['evc_time_regname']
+                        if c1:
                             evctime_reg[mb_config_check_item['name']] = {
                                 'name': item['name'],
                                 'data_type': item['data_type']

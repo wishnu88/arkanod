@@ -293,7 +293,7 @@ class DeviceRead(threading.Thread):
 
             # Send the received MODBUS responses to STDOUT for debugging purposes only.
             if self.mb_config_item[kind]['debug'] is True:
-                print_log(archive_log_items)
+                print_log(f"[{self.name}] {archive_log_items}")
 
             if retention > 0:
                 for group_id_index in enumerate(archive_log_group_ids):
@@ -415,7 +415,7 @@ class DeviceRead(threading.Thread):
                     continue
 
                 if self.mb_config_item['current_log']['debug'] is True:
-                    print(register_items)
+                    print(f"[{self.name}] {register_items}")
 
                 if current_device_id == 0:
                     q_get_device_id = "SELECT id FROM " + self.db_tbl_prefix + "_devices " \
@@ -506,8 +506,10 @@ class DeviceRead(threading.Thread):
                 # effect above.
                 if self.tparams['archive_log_enabled']['daily_log'] is True and \
                     self.mb_config_item['daily_log']['day_start_hour'] > 0:
-                    last_dtu_str += timedelta(hours=self.mb_config_item['daily_log']['day_start_hour'])
-                    current_dtu_str += timedelta(hours=self.mb_config_item['daily_log']['day_start_hour'])
+                    last_dtu_str += timedelta(
+                        hours=self.mb_config_item['daily_log']['day_start_hour'])
+                    current_dtu_str += timedelta(
+                        hours=self.mb_config_item['daily_log']['day_start_hour'])
 
                 # START - Check Request Log.
                 q_check_request_log = "SELECT id, archiveLog, logRetention FROM " + \
