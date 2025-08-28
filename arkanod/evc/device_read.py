@@ -347,7 +347,7 @@ class DeviceRead(threading.Thread):
         # Open database and then map the connection and the cursor for later use.
         [db_conn, self.db_cur] = db_open(self.db_conn_params)
 
-        current_device_id = 0
+        current_device_id = {}
         archive_log_failed = ARCHIVE_LOG_FAILED.copy()
         modbus_connected = False
 
@@ -417,31 +417,30 @@ class DeviceRead(threading.Thread):
                 if self.mb_config_item['current_log']['debug'] is True:
                     print(f"[{self.name}] {register_items}")
 
-                if current_device_id == 0:
+                if current_slave_id not in current_device_id:
                     q_get_device_id = "SELECT id FROM " + self.db_tbl_prefix + "_devices " \
                         "WHERE mbmaster_name = %s AND slaveID = %s LIMIT 1"
                     self.db_cur.execute(q_get_device_id, (self.mb_config_item['name'],
                                                             current_slave_id))
 
-                    if self.db_cur.rowcount == 0:
+                    if self.db_cur.rowcount > 0:
+                        rows_device_id = self.db_cur.fetchone()
+                        current_device_id[current_slave_id] = rows_device_id[0]
+                    else:
                         self.db_cur.execute("INSERT INTO " + self.db_tbl_prefix + \
                                             "_devices (`mbmaster_name`, `slaveID`) " \
                                                 "VALUES (%s, %s)",
                                             (self.mb_config_item['name'], current_slave_id))
-                        current_device_id = self.db_cur.lastrowid
-
-                    if current_device_id == 0:
-                        rows_device_id = self.db_cur.fetchone()
-                        current_device_id = rows_device_id[0]
+                        current_device_id[current_slave_id] = self.db_cur.lastrowid
 
                     q_get_current = "SELECT id FROM " + self.db_tbl_prefix + "_current_log " \
                         "WHERE deviceID = %s"
                     self.db_cur.execute(q_get_current, (current_device_id,))
 
                     if self.db_cur.rowcount == 0:
-                        self.send_current_log(current_device_id, insert_log=True)
+                        self.send_current_log(current_device_id[current_slave_id], insert_log=True)
 
-                self.send_current_log(current_device_id, register_items)
+                self.send_current_log(current_device_id[current_slave_id], register_items)
 
                 if dtu_source == 'dbserver':
                     last_dtu_str = last_dtu
@@ -458,7 +457,7 @@ class DeviceRead(threading.Thread):
                     self.tparams['archive_log_enabled']['hourly_log'] is True
                 ]
                 if (dtu_conditions[0] or dtu_conditions[1]) and dtu_conditions[2]:
-                    if (self.send_archive_log(current_device_id, 'hourly_log',
+                    if (self.send_archive_log(current_device_id[current_slave_id], 'hourly_log',
                                               current_slave_id)['status'] != 1):
                         archive_log_failed['hourly_log'] = True
                     elif archive_log_failed['hourly_log'] is True:
@@ -481,7 +480,7 @@ class DeviceRead(threading.Thread):
                     self.tparams['archive_log_enabled']['daily_log'] is True
                 ]
                 if (dtu_conditions[0] or dtu_conditions[1]) and dtu_conditions[2]:
-                    if self.send_archive_log(current_device_id, 'daily_log',
+                    if self.send_archive_log(current_device_id[current_slave_id], 'daily_log',
                                              current_slave_id)['status'] != 1:
                         archive_log_failed['daily_log'] = True
                     elif archive_log_failed['daily_log'] is True:
@@ -494,7 +493,7 @@ class DeviceRead(threading.Thread):
                     self.tparams['archive_log_enabled']['monthly_log'] is True
                 ]
                 if (dtu_conditions[0] or dtu_conditions[1]) and dtu_conditions[2]:
-                    if self.send_archive_log(current_device_id, 'monthly_log',
+                    if self.send_archive_log(current_device_id[current_slave_id], 'monthly_log',
                                              current_slave_id)['status'] != 1:
                         archive_log_failed['monthly_log'] = True
                     elif archive_log_failed['monthly_log'] is True:
@@ -515,14 +514,14 @@ class DeviceRead(threading.Thread):
                 q_check_request_log = "SELECT id, archiveLog, logRetention FROM " + \
                     self.db_tbl_prefix + "_request_log WHERE deviceID = %s AND " \
                         "requestStatus = 0 AND archiveLog >= 0 AND archiveLog < %s"
-                self.db_cur.execute(q_check_request_log, (current_device_id,
+                self.db_cur.execute(q_check_request_log, (current_device_id[current_slave_id],
                                                             len(ARCHIVE_LOG_LIST)))
 
                 if self.db_cur.rowcount > 0:
                     rows_request_log = self.db_cur.fetchall()
                     for row_request_log in rows_request_log:
                         if row_request_log[2] <= self.mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['max_retention'] and self.tparams['archive_log_enabled'][ARCHIVE_LOG_LIST[row_request_log[1]]] is True:
-                            q_request_log_status = 1 if len(self.send_archive_log(current_device_id, ARCHIVE_LOG_LIST[row_request_log[1]], current_slave_id, retention = row_request_log[2])['items']) > 0 else 2
+                            q_request_log_status = 1 if len(self.send_archive_log(current_device_id[current_slave_id], ARCHIVE_LOG_LIST[row_request_log[1]], current_slave_id, retention = row_request_log[2])['items']) > 0 else 2
                         else:
                             q_request_log_status = 2
 
