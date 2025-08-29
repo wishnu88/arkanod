@@ -348,7 +348,8 @@ class DeviceRead(threading.Thread):
         [db_conn, self.db_cur] = db_open(self.db_conn_params)
 
         current_device_id = {}
-        archive_log_failed = ARCHIVE_LOG_FAILED.copy()
+        last_dtu_dev = {}
+        archive_log_failed = {}
         modbus_connected = False
 
         # Define EVC time source.
@@ -387,9 +388,6 @@ class DeviceRead(threading.Thread):
             # Reset timer, waiting for the next cycle.
             self.current_log_timer = round(millis()*1000)
 
-            if 'last_dtu' not in locals():
-                last_dtu = 0 if dtu_source == 'evc' else datetime(1970, 1, 1, 0, 0, 0)
-
             current_log_group_ids = self.get_log_group_ids(
                 self.mb_config_item['current_log']['group_ids'])
 
@@ -399,6 +397,13 @@ class DeviceRead(threading.Thread):
 
             for current_slave_id in all_register_items:
                 register_items = all_register_items[current_slave_id]
+
+                if current_slave_id not in last_dtu_dev:
+                    last_dtu_dev[current_slave_id] = 0 if dtu_source == 'evc' \
+                        else datetime(1970, 1, 1, 0, 0, 0)
+                    archive_log_failed[current_slave_id] = ARCHIVE_LOG_FAILED.copy()
+
+                last_dtu = last_dtu_dev[current_slave_id]
 
                 # Pull items count for current slave_id.
                 items_count = 0
@@ -435,7 +440,7 @@ class DeviceRead(threading.Thread):
 
                     q_get_current = "SELECT id FROM " + self.db_tbl_prefix + "_current_log " \
                         "WHERE deviceID = %s"
-                    self.db_cur.execute(q_get_current, (current_device_id,))
+                    self.db_cur.execute(q_get_current, (current_device_id[current_slave_id],))
 
                     if self.db_cur.rowcount == 0:
                         self.send_current_log(current_device_id[current_slave_id], insert_log=True)
@@ -453,15 +458,15 @@ class DeviceRead(threading.Thread):
                 # Get hourly log when EVC hour has changed.
                 dtu_conditions = [
                     last_dtu_str.hour != current_dtu_str.hour,
-                    archive_log_failed['hourly_log'] is True,
+                    archive_log_failed[current_slave_id]['hourly_log'] is True,
                     self.tparams['archive_log_enabled']['hourly_log'] is True
                 ]
                 if (dtu_conditions[0] or dtu_conditions[1]) and dtu_conditions[2]:
                     if (self.send_archive_log(current_device_id[current_slave_id], 'hourly_log',
                                               current_slave_id)['status'] != 1):
-                        archive_log_failed['hourly_log'] = True
-                    elif archive_log_failed['hourly_log'] is True:
-                        archive_log_failed['hourly_log'] = False
+                        archive_log_failed[current_slave_id]['hourly_log'] = True
+                    elif archive_log_failed[current_slave_id]['hourly_log'] is True:
+                        archive_log_failed[current_slave_id]['hourly_log'] = False
 
                 # Substract the last current time of the EVC device by the configured
                 # day_start_hour, only if day_start_hour > 0, for the relativity effect
@@ -476,28 +481,28 @@ class DeviceRead(threading.Thread):
                 # Get daily log when EVC day has changed.
                 dtu_conditions = [
                     last_dtu_str.day != current_dtu_str.day,
-                    archive_log_failed['daily_log'] is True,
+                    archive_log_failed[current_slave_id]['daily_log'] is True,
                     self.tparams['archive_log_enabled']['daily_log'] is True
                 ]
                 if (dtu_conditions[0] or dtu_conditions[1]) and dtu_conditions[2]:
                     if self.send_archive_log(current_device_id[current_slave_id], 'daily_log',
                                              current_slave_id)['status'] != 1:
-                        archive_log_failed['daily_log'] = True
-                    elif archive_log_failed['daily_log'] is True:
-                        archive_log_failed['daily_log'] = False
+                        archive_log_failed[current_slave_id]['daily_log'] = True
+                    elif archive_log_failed[current_slave_id]['daily_log'] is True:
+                        archive_log_failed[current_slave_id]['daily_log'] = False
 
                 # Get monthly log when EVC month has changed.
                 dtu_conditions = [
                     last_dtu_str.month != current_dtu_str.month,
-                    archive_log_failed['monthly_log'] is True,
+                    archive_log_failed[current_slave_id]['monthly_log'] is True,
                     self.tparams['archive_log_enabled']['monthly_log'] is True
                 ]
                 if (dtu_conditions[0] or dtu_conditions[1]) and dtu_conditions[2]:
                     if self.send_archive_log(current_device_id[current_slave_id], 'monthly_log',
                                              current_slave_id)['status'] != 1:
-                        archive_log_failed['monthly_log'] = True
-                    elif archive_log_failed['monthly_log'] is True:
-                        archive_log_failed['monthly_log'] = False
+                        archive_log_failed[current_slave_id]['monthly_log'] = True
+                    elif archive_log_failed[current_slave_id]['monthly_log'] is True:
+                        archive_log_failed[current_slave_id]['monthly_log'] = False
 
                 del dtu_conditions
                 # Add the last current time of the EVC device by the configured
@@ -536,6 +541,8 @@ class DeviceRead(threading.Thread):
                     last_dtu = register_items[self.evctime_reg['name']]
                 else:
                     last_dtu = datetime.now()
+
+                last_dtu_dev[current_slave_id] = last_dtu
 
         if (self.tparams['mb_client'] is not None and
             hasattr(self.tparams['mb_client'], 'connected') and
