@@ -395,6 +395,23 @@ def main():
 
             # END - Sanity check for wait_milliseconds configuration.
 
+            # START - Sanity check for keepalive configuration.
+
+            if mb_config_check_item['type'] in ('tcp','rtuovertcp') and \
+                'keepalive' in mb_config_check_item:
+                if isinstance(mb_config_check_item['keepalive'], bool) is False:
+                    print_log(f"[{mb_config_files[item_index]}] Invalid Modbus device keepalive "
+                                  "configuration (keepalive: ). Valid configuration are boolean: "
+                                  "True or False.", 'error')
+                    error_len += 1
+            else:
+                print_log(f"[{mb_config_files[item_index]}] No Modbus device keepalive "
+                          "configuration (keepalive: ). Using default setting (true).",
+                          'debug')
+                mb_config_detail[item_index]['keepalive'] = True
+
+            # END - Sanity check for keepalive configuration.
+
             # START - Sanity check for current_log configuration.
 
             if 'current_log' in mb_config_check_item:

@@ -544,6 +544,11 @@ class DeviceRead(threading.Thread):
 
                 last_dtu_dev[current_slave_id] = last_dtu
 
+                # Disconnect MODBUS TCP connection if keepalive is false.
+                if self.mb_config_item['type'] in ('tcp','rtuovertcp') and \
+                    self.mb_config_item['keepalive'] is False:
+                    mb_close(self.tparams['mb_client'])
+
         if (self.tparams['mb_client'] is not None and
             hasattr(self.tparams['mb_client'], 'connected') and
             self.tparams['mb_client'].connected is True):
