@@ -147,8 +147,8 @@ class DeviceRead(threading.Thread):
             if not hasattr(result, 'registers') or result.isError():
                 print_log(f"[{self.name}] Broken response from Modbus device register address "
                           f"{register_group['address']} count {register_group['count']} on "
-                          f"{self.tparams['mb_client']} with slave ID {register_group['slave']}: "
-                          f"{e}. Moving on...", 'error')
+                          f"{self.tparams['mb_client']} with slave ID {register_group['slave']}. "
+                          'Moving on...', 'error')
                 sleep(self.mb_config_item['timeout_seconds'])
                 if self.tparams['mb_client'].connected is False:
                     print_log(f"[{self.name}] Disconnected from {self.tparams['mb_client']}.",
