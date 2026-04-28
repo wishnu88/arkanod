@@ -306,14 +306,15 @@ class DeviceRead(threading.Thread):
                     " (deviceID, " + ', '.join(archive_log_items) + ") VALUES (" + \
                         str(device_id) + ", %(" + ")s, %(".join(list(archive_log_items)) + ")s)"
                 self.db_cur.execute(q_insert_archive, archive_log_items)
-                if self.db_cur.rowcount > 0:
-                    all_archive_log_items.append(archive_log_items)
             except (DBError, KeyError) as e:
                 print_log(f"[{self.name}] send_archive_log(): {e} during {kind} operation for "
                             f"device_id {device_id}.", 'error')
                 if retention == 0:
                     success_status = 2
             else:
+                if self.db_cur.rowcount > 0:
+                    all_archive_log_items.append(archive_log_items)
+
                 if retention == 0:
                     success_status = 1
 
@@ -423,24 +424,32 @@ class DeviceRead(threading.Thread):
                     print(f"[{self.name}] {register_items}")
 
                 if current_slave_id not in current_device_id:
-                    q_get_device_id = "SELECT id FROM " + self.db_tbl_prefix + "_devices " \
-                        "WHERE mbmaster_name = %s AND slaveID = %s LIMIT 1"
-                    self.db_cur.execute(q_get_device_id, (self.mb_config_item['name'],
-                                                            current_slave_id))
+                    try:
+                        q_get_device_id = "SELECT id FROM " + self.db_tbl_prefix + "_devices " \
+                            "WHERE mbmaster_name = %s AND slaveID = %s LIMIT 1"
+                        self.db_cur.execute(q_get_device_id, (self.mb_config_item['name'],
+                                                                current_slave_id))
 
-                    if self.db_cur.rowcount > 0:
-                        rows_device_id = self.db_cur.fetchone()
-                        current_device_id[current_slave_id] = rows_device_id[0]
-                    else:
-                        self.db_cur.execute("INSERT INTO " + self.db_tbl_prefix + \
-                                            "_devices (`mbmaster_name`, `slaveID`) " \
-                                                "VALUES (%s, %s)",
-                                            (self.mb_config_item['name'], current_slave_id))
-                        current_device_id[current_slave_id] = self.db_cur.lastrowid
+                        if self.db_cur.rowcount > 0:
+                            rows_device_id = self.db_cur.fetchone()
+                            current_device_id[current_slave_id] = rows_device_id[0]
+                        else:
+                            self.db_cur.execute("INSERT INTO " + self.db_tbl_prefix + \
+                                                "_devices (`mbmaster_name`, `slaveID`) " \
+                                                    "VALUES (%s, %s)",
+                                                (self.mb_config_item['name'], current_slave_id))
+                            current_device_id[current_slave_id] = self.db_cur.lastrowid
 
-                    q_get_current = "SELECT id FROM " + self.db_tbl_prefix + "_current_log " \
-                        "WHERE deviceID = %s"
-                    self.db_cur.execute(q_get_current, (current_device_id[current_slave_id],))
+                        q_get_current = "SELECT id FROM " + self.db_tbl_prefix + "_current_log " \
+                            "WHERE deviceID = %s"
+                        self.db_cur.execute(q_get_current, (current_device_id[current_slave_id],))
+
+                    except DBError as e:
+                        print_log(f"[{self.name}] Database connection interrupted: {e}. "
+                                    "Closing...", 'error')
+                        db_close(db_conn)
+
+                        continue
 
                     if self.db_cur.rowcount == 0:
                         self.send_current_log(current_device_id[current_slave_id], insert_log=True)
@@ -519,21 +528,29 @@ class DeviceRead(threading.Thread):
                 q_check_request_log = "SELECT id, archiveLog, logRetention FROM " + \
                     self.db_tbl_prefix + "_request_log WHERE deviceID = %s AND " \
                         "requestStatus = 0 AND archiveLog >= 0 AND archiveLog < %s"
-                self.db_cur.execute(q_check_request_log, (current_device_id[current_slave_id],
-                                                            len(ARCHIVE_LOG_LIST)))
 
-                if self.db_cur.rowcount > 0:
-                    rows_request_log = self.db_cur.fetchall()
-                    for row_request_log in rows_request_log:
-                        if row_request_log[2] <= self.mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['max_retention'] and self.tparams['archive_log_enabled'][ARCHIVE_LOG_LIST[row_request_log[1]]] is True:
-                            q_request_log_status = 1 if len(self.send_archive_log(current_device_id[current_slave_id], ARCHIVE_LOG_LIST[row_request_log[1]], current_slave_id, retention = row_request_log[2])['items']) > 0 else 2
-                        else:
-                            q_request_log_status = 2
+                try:
+                    self.db_cur.execute(q_check_request_log, (current_device_id[current_slave_id],
+                                                                len(ARCHIVE_LOG_LIST)))
 
-                        q_update_request_log = "UPDATE " + self.db_tbl_prefix + "_request_log " \
-                            "SET requestStatus = %s WHERE id = %s"
-                        self.db_cur.execute(q_update_request_log, (q_request_log_status,
-                        row_request_log[0]))
+                    if self.db_cur.rowcount > 0:
+                        rows_request_log = self.db_cur.fetchall()
+                        for row_request_log in rows_request_log:
+                            if row_request_log[2] <= self.mb_config_item[ARCHIVE_LOG_LIST[row_request_log[1]]]['max_retention'] and self.tparams['archive_log_enabled'][ARCHIVE_LOG_LIST[row_request_log[1]]] is True:
+                                q_request_log_status = 1 if len(self.send_archive_log(current_device_id[current_slave_id], ARCHIVE_LOG_LIST[row_request_log[1]], current_slave_id, retention = row_request_log[2])['items']) > 0 else 2
+                            else:
+                                q_request_log_status = 2
+
+                            q_update_request_log = "UPDATE " + self.db_tbl_prefix + \
+                                "_request_log SET requestStatus = %s WHERE id = %s"
+                            self.db_cur.execute(q_update_request_log, (q_request_log_status,
+                            row_request_log[0]))
+                except DBError as e:
+                    print_log(f"[{self.name}] Database connection interrupted: {e}. "
+                                "Closing...", 'error')
+                    db_close(db_conn)
+
+                    continue
                 # END - Check Request Log.
 
                 # Time mark for the last EVC current log MODBUS poll.
